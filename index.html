@@ -1263,7 +1263,9 @@ function saveGateClientId() {
 }
 
 async function getTokenEmail(token) {
-  const r    = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${token}`);
+  const r    = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
   const data = await r.json();
   return data.email || null;
 }
@@ -1302,7 +1304,7 @@ function initDrive() {
 function setupTokenClient(clientId) {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: clientId,
-    scope: 'https://www.googleapis.com/auth/drive.file',
+    scope: 'https://www.googleapis.com/auth/drive.file email',
     callback: onTokenResponse,
   });
   driveReady = true;
