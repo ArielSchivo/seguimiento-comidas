@@ -748,8 +748,21 @@ input[type="time"]:focus { border-color: var(--accent); }
       Acceder con Google
     </button>
     <div class="auth-error" id="auth-error">⛔ Esta cuenta no tiene acceso.</div>
-    <div class="auth-no-cfg" id="auth-no-cfg">
-      ⚙️ Configurá el Client ID de Drive primero — abrí la app en localhost y usá el botón "Configurar Drive".
+
+    <!-- Primer uso en este dispositivo -->
+    <div id="auth-first-use" style="display:none;margin-top:16px;text-align:left">
+      <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:10px">
+        Primera vez en este dispositivo. Pegá tu Client ID de Google Cloud:
+      </p>
+      <input class="client-id-input" id="gate-cid-input"
+        placeholder="xxxxxxxx.apps.googleusercontent.com"
+        style="margin-bottom:10px">
+      <button class="btn btn-green" style="width:100%" onclick="saveGateClientId()">
+        Guardar y acceder
+      </button>
+      <p style="font-size:.76rem;color:var(--text-muted);margin-top:8px;text-align:center">
+        Lo encontrás en Google Cloud Console → Credenciales
+      </p>
     </div>
   </div>
 </div>
@@ -1212,7 +1225,8 @@ function hideGate()  { document.getElementById('auth-gate').style.display = 'non
 function authWithGoogle() {
   const cfg = getDriveCfg();
   if (!cfg.clientId) {
-    document.getElementById('auth-no-cfg').style.display = 'block';
+    document.getElementById('auth-btn').style.display = 'none';
+    document.getElementById('auth-first-use').style.display = 'block';
     return;
   }
   const btn = document.getElementById('auth-btn');
@@ -1224,10 +1238,28 @@ function authWithGoogle() {
   } else {
     initDrive();
     setTimeout(() => {
-      if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' });
-      else { btn.disabled = false; btn.innerHTML = '<svg …/> Acceder con Google'; }
+      if (tokenClient) {
+        tokenClient.requestAccessToken({ prompt: 'select_account' });
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Acceder con Google';
+      }
     }, 2000);
   }
+}
+
+function saveGateClientId() {
+  const val = (document.getElementById('gate-cid-input')?.value || '').trim();
+  if (!val) return;
+  saveDriveCfg({ clientId: val });
+  document.getElementById('auth-first-use').style.display = 'none';
+  document.getElementById('auth-btn').style.display = 'flex';
+  // Re-init Drive with new client ID and trigger auth
+  tokenClient = null; driveReady = false;
+  initDrive();
+  setTimeout(() => {
+    if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' });
+  }, 1500);
 }
 
 async function getTokenEmail(token) {
