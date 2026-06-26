@@ -511,6 +511,74 @@ input[type="time"]:focus { border-color: var(--accent); }
   margin-bottom: 10px;
 }
 
+/* ── Auth gate ─────────────────────────────────────────────────────── */
+#auth-gate {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.auth-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 40px 36px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  max-width: 360px;
+  width: 100%;
+}
+
+.auth-logo { font-size: 3rem; margin-bottom: 14px; }
+.auth-title { font-size: 1.25rem; font-weight: 700; color: var(--accent-dark); margin-bottom: 6px; }
+.auth-sub { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 28px; }
+
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: white;
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #3c4043;
+  transition: all 0.15s;
+  font-family: inherit;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.btn-google:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.14); }
+.btn-google:disabled { opacity: 0.6; cursor: wait; }
+
+.auth-error {
+  margin-top: 16px;
+  background: var(--danger-light);
+  color: var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  display: none;
+}
+
+.auth-no-cfg {
+  margin-top: 16px;
+  background: #fffbeb;
+  border: 1px solid #f6e05e;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.83rem;
+  color: #744210;
+  display: none;
+}
+
 /* ── Google Drive ──────────────────────────────────────────────────── */
 .header-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
@@ -658,6 +726,27 @@ input[type="time"]:focus { border-color: var(--accent); }
 </style>
 </head>
 <body>
+
+<div id="auth-gate">
+  <div class="auth-card">
+    <div class="auth-logo">🥗</div>
+    <div class="auth-title">Seguimiento de Comidas</div>
+    <div class="auth-sub">Acceso restringido — uso personal</div>
+    <button class="btn-google" id="auth-btn" onclick="authWithGoogle()">
+      <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+        <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908C16.658 13.695 17.64 11.387 17.64 8.648z" fill="#4285F4"/>
+        <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+        <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+      </svg>
+      Acceder con Google
+    </button>
+    <div class="auth-error" id="auth-error">⛔ Esta cuenta no tiene acceso.</div>
+    <div class="auth-no-cfg" id="auth-no-cfg">
+      ⚙️ Configurá el Client ID de Drive primero — abrí la app en localhost y usá el botón "Configurar Drive".
+    </div>
+  </div>
+</div>
 
 <header>
   <div class="header-inner">
@@ -1093,6 +1182,54 @@ function downloadCSV(content, filename) {
   URL.revokeObjectURL(url);
 }
 
+// ── Auth gate ─────────────────────────────────────────────────────────────────
+const ALLOWED_EMAIL = 'arielschivo@gmail.com';
+const AUTH_KEY      = 'nutricion_auth_v1';
+
+function isSessionValid() {
+  try {
+    const s = JSON.parse(sessionStorage.getItem(AUTH_KEY) || 'null');
+    return s && s.email === ALLOWED_EMAIL && Date.now() < s.exp;
+  } catch { return false; }
+}
+
+function saveSession() {
+  sessionStorage.setItem(AUTH_KEY, JSON.stringify({
+    email: ALLOWED_EMAIL,
+    exp:   Date.now() + 8 * 60 * 60 * 1000, // 8 horas
+  }));
+}
+
+function showGate()  { document.getElementById('auth-gate').style.display = 'flex'; }
+function hideGate()  { document.getElementById('auth-gate').style.display = 'none'; }
+
+function authWithGoogle() {
+  const cfg = getDriveCfg();
+  if (!cfg.clientId) {
+    document.getElementById('auth-no-cfg').style.display = 'block';
+    return;
+  }
+  const btn = document.getElementById('auth-btn');
+  btn.disabled = true;
+  btn.textContent = 'Conectando…';
+
+  if (tokenClient) {
+    tokenClient.requestAccessToken({ prompt: 'select_account' });
+  } else {
+    initDrive();
+    setTimeout(() => {
+      if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' });
+      else { btn.disabled = false; btn.innerHTML = '<svg …/> Acceder con Google'; }
+    }, 2000);
+  }
+}
+
+async function getTokenEmail(token) {
+  const r    = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${token}`);
+  const data = await r.json();
+  return data.email || null;
+}
+
 // ── Google Drive integration ──────────────────────────────────────────────────
 const DRIVE_CFG_KEY = 'nutricion_drive_cfg';
 
@@ -1134,10 +1271,38 @@ function setupTokenClient(clientId) {
   updateDriveBtn();
 }
 
-function onTokenResponse(resp) {
-  if (resp.error) { toast('⚠️ Error Drive: ' + resp.error); updateDriveBtn(); return; }
-  accessToken   = resp.access_token;
-  tokenExpiry   = Date.now() + (resp.expires_in - 60) * 1000;
+async function onTokenResponse(resp) {
+  const btn = document.getElementById('auth-btn');
+  if (resp.error) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Acceder con Google'; }
+    toast('⚠️ Error Drive: ' + resp.error);
+    updateDriveBtn();
+    return;
+  }
+
+  accessToken = resp.access_token;
+  tokenExpiry = Date.now() + (resp.expires_in - 60) * 1000;
+
+  // Verify email if session not yet established
+  if (!isSessionValid()) {
+    try {
+      const email = await getTokenEmail(accessToken);
+      if (email !== ALLOWED_EMAIL) {
+        accessToken = null; tokenExpiry = 0;
+        if (btn) { btn.disabled = false; btn.textContent = 'Acceder con Google'; }
+        document.getElementById('auth-error').style.display = 'block';
+        return;
+      }
+      saveSession();
+    } catch (err) {
+      accessToken = null; tokenExpiry = 0;
+      if (btn) { btn.disabled = false; btn.textContent = 'Acceder con Google'; }
+      toast('⚠️ No se pudo verificar la cuenta');
+      return;
+    }
+  }
+
+  hideGate();
   driveFolderId = null;
   dataFileId    = null;
   updateDriveBtn();
@@ -1758,6 +1923,12 @@ function toast(msg) {
 // ── Init ──────────────────────────────────────────────────────────────────────
 render();
 initDrive();
+if (isSessionValid()) {
+  hideGate();
+  // Silent token refresh — no prompt, no popup
+  setTimeout(() => { if (tokenClient) tokenClient.requestAccessToken({ prompt: 'none' }); }, 800);
+}
+// If no session, gate stays visible — user must click "Acceder con Google"
 </script>
 </body>
 </html>
