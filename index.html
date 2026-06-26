@@ -1,0 +1,1763 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seguimiento de Comidas</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f0f4f8;
+  --surface: #ffffff;
+  --surface2: #f8fafc;
+  --border: #e2e8f0;
+  --text: #1a202c;
+  --text-muted: #718096;
+  --accent: #38a169;
+  --accent-light: #c6f6d5;
+  --accent-dark: #276749;
+  --danger: #e53e3e;
+  --danger-light: #fed7d7;
+  --shadow: 0 2px 8px rgba(0,0,0,0.08);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding-bottom: 160px;
+}
+
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow);
+}
+
+.header-inner {
+  max-width: 700px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.app-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+
+.date-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.date-nav button {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text);
+  transition: background 0.15s;
+}
+
+.date-nav button:hover { background: var(--bg); }
+
+.date-label {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.btn-today {
+  background: var(--accent) !important;
+  color: white !important;
+  border-color: var(--accent) !important;
+  font-weight: 600;
+}
+
+main {
+  max-width: 700px;
+  margin: 20px auto;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Meal card */
+.meal-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.meal-header {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.meal-emoji { font-size: 1.3rem; }
+
+.meal-info { flex: 1; }
+.meal-name { font-weight: 700; font-size: 0.95rem; }
+.meal-time-range { font-size: 0.78rem; color: var(--text-muted); }
+
+.meal-badge {
+  background: var(--accent-light);
+  color: var(--accent-dark);
+  border-radius: 20px;
+  padding: 2px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.meal-empty {
+  padding: 12px 16px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  font-style: italic;
+}
+
+/* Entry row */
+.entry-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.entry-row:last-child { border-bottom: none; }
+.entry-row:hover { background: var(--surface2); }
+
+.entry-time {
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 0.77rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.entry-text {
+  flex: 1;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.entry-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.entry-row:hover .entry-actions { opacity: 1; }
+
+.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  transition: background 0.1s;
+  color: var(--text-muted);
+}
+
+.btn-icon:hover { background: var(--border); color: var(--text); }
+.btn-icon.del:hover { background: var(--danger-light); color: var(--danger); }
+.btn-icon.save-edit:hover { background: var(--accent-light); color: var(--accent-dark); }
+
+textarea.inline-edit {
+  width: 100%;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  line-height: 1.4;
+  background: var(--accent-light);
+  color: var(--text);
+  outline: none;
+  resize: none;
+}
+
+/* Export bar */
+.export-bar {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.export-bar span {
+  flex: 1;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  min-width: 120px;
+}
+
+/* Voice panel */
+#voice-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border-top: 2px solid var(--border);
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+  padding: 14px 16px;
+  z-index: 200;
+}
+
+.voice-inner {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.voice-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+#mic-btn {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: white;
+  font-size: 1.4rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(56,161,105,0.4);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#mic-btn:hover { transform: scale(1.05); }
+
+#mic-btn.recording {
+  background: #e53e3e;
+  box-shadow: 0 4px 16px rgba(229,62,62,0.5);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 4px 12px rgba(229,62,62,0.5); }
+  50% { box-shadow: 0 4px 28px rgba(229,62,62,0.8); transform: scale(1.06); }
+}
+
+.voice-right { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+
+#voice-text {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  resize: none;
+  height: 58px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+#voice-text:focus { border-color: var(--accent); }
+#voice-text.filled { background: var(--accent-light); border-color: var(--accent); }
+
+#voice-status {
+  font-size: 0.77rem;
+  color: var(--text-muted);
+  min-height: 14px;
+}
+
+#voice-status.active { color: #e53e3e; font-weight: 600; }
+
+.voice-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.btn {
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  border: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.btn-green { background: var(--accent); color: white; }
+.btn-green:hover { background: var(--accent-dark); }
+.btn-gray { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+.btn-gray:hover { background: var(--border); }
+
+/* Retro-entry modal form */
+.form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.form-group:last-child { margin-bottom: 0; }
+.form-label { font-size: 0.82rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.form-row { display: flex; align-items: center; gap: 12px; }
+
+input[type="date"],
+input[type="time"] {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 0.92rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--bg);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+input[type="date"]:focus,
+input[type="time"]:focus { border-color: var(--accent); }
+
+.meal-chip {
+  background: var(--accent-light);
+  color: var(--accent-dark);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.retro-voice-row { display: flex; align-items: flex-start; gap: 10px; }
+
+.retro-mic {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: white;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 3px 8px rgba(56,161,105,0.35);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.retro-mic:hover { transform: scale(1.05); }
+.retro-mic.recording {
+  background: #e53e3e;
+  box-shadow: 0 3px 10px rgba(229,62,62,0.5);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.retro-mic:disabled { opacity: 0.45; cursor: default; }
+
+.retro-textarea {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 0.92rem;
+  font-family: inherit;
+  resize: none;
+  height: 72px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.retro-textarea:focus { border-color: var(--accent); }
+.retro-status { font-size: 0.76rem; color: var(--text-muted); min-height: 14px; margin-top: 4px; }
+.retro-status.active { color: #e53e3e; font-weight: 600; }
+
+.modal-body-pad { padding: 20px; }
+
+/* Day-picker modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+  max-width: 460px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-title { flex: 1; font-weight: 700; font-size: 1rem; }
+
+.modal-body { overflow-y: auto; flex: 1; }
+
+.day-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 20px;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.day-row:last-child { border-bottom: none; }
+.day-row:hover { background: var(--surface2); }
+
+.day-row input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+.day-row-info { flex: 1; }
+.day-row-date { font-weight: 600; font-size: 0.9rem; }
+.day-row-count { font-size: 0.78rem; color: var(--text-muted); margin-top: 1px; }
+
+.modal-footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-link {
+  flex: 1;
+  font-size: 0.82rem;
+  color: var(--accent-dark);
+  cursor: pointer;
+  text-decoration: underline;
+  background: none;
+  border: none;
+  text-align: left;
+  font-family: inherit;
+  padding: 0;
+}
+
+.selected-count {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* Warning */
+.warn-box {
+  background: #fffbeb;
+  border: 1px solid #f6e05e;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: #744210;
+  margin-bottom: 10px;
+}
+
+/* ── Google Drive ──────────────────────────────────────────────────── */
+.header-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+.drive-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.drive-btn:hover { background: var(--bg); }
+.drive-btn.connected { color: var(--accent-dark); border-color: var(--accent); background: var(--accent-light); }
+
+.entry-photo { margin: 6px 0 2px; display: flex; align-items: center; gap: 10px; }
+.photo-thumb {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: block;
+}
+.photo-thumb:hover { border-color: var(--accent); opacity: 0.88; }
+.photo-link { font-size: 0.78rem; color: var(--accent-dark); cursor: pointer; text-decoration: underline; }
+
+.upload-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.upload-box {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 28px 36px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  min-width: 200px;
+}
+.upload-box p { font-size: 0.9rem; color: var(--text-muted); }
+.spinner {
+  width: 38px; height: 38px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.setup-step {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 0.87rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+.step-num {
+  background: var(--accent);
+  color: white;
+  border-radius: 50%;
+  min-width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.74rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.setup-step a { color: var(--accent-dark); }
+.setup-step code { background: var(--bg); border-radius: 4px; padding: 1px 5px; font-size: 0.82rem; }
+.client-id-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 0.85rem;
+  font-family: monospace;
+  color: var(--text);
+  background: var(--bg);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.client-id-input:focus { border-color: var(--accent); }
+.drive-note {
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 0.81rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-top: 8px;
+}
+.drive-connected-badge {
+  background: var(--accent-light);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  color: var(--accent-dark);
+  font-weight: 600;
+  font-size: 0.88rem;
+  margin-bottom: 16px;
+}
+
+/* Toast */
+#toast {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-16px);
+  background: #2d3748;
+  color: white;
+  padding: 9px 20px;
+  border-radius: 20px;
+  font-size: 0.88rem;
+  z-index: 999;
+  opacity: 0;
+  transition: all 0.25s;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+#toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="header-top">
+      <div class="app-title">🥗 Seguimiento de Comidas</div>
+      <button class="drive-btn" id="drive-btn" onclick="handleDriveBtn()">☁️ Configurar Drive</button>
+    </div>
+    <div class="date-nav">
+      <button onclick="moveDay(-1)" title="Día anterior">◀</button>
+      <div class="date-label" id="date-label"></div>
+      <button onclick="moveDay(1)" title="Día siguiente">▶</button>
+      <button class="btn-today" onclick="goToday()">Hoy</button>
+    </div>
+  </div>
+</header>
+
+<main id="main"></main>
+
+<div id="voice-panel">
+  <div class="voice-inner">
+    <div class="warn-box" id="warn-box" style="display:none">
+      ⚠️ Tu navegador no soporta reconocimiento de voz. Abrí esta app en <strong>Chrome</strong> o <strong>Edge</strong> para usar el micrófono. Igual podés escribir manualmente.
+    </div>
+    <div class="voice-row">
+      <button id="mic-btn" onclick="toggleMic()" title="Hablar">🎤</button>
+      <div class="voice-right">
+        <textarea id="voice-text"
+          placeholder="Presioná el micrófono y decí qué comiste... o escribí acá directamente"
+          rows="2"></textarea>
+        <div id="voice-status">Listo — presioná el micrófono o escribí</div>
+      </div>
+    </div>
+    <div class="voice-btns">
+      <button class="btn btn-gray" onclick="clearVoice()">Limpiar</button>
+      <button class="btn btn-green" onclick="saveEntry()">✓ Guardar</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="photo-file-input" accept="image/*" style="display:none"
+  onchange="onPhotoSelected(this)">
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ── Config ──────────────────────────────────────────────────────────────────
+const DB_KEY = 'nutricion_v1';
+
+const MEALS = [
+  { name: 'Desayuno',          emoji: '☀️',  start: 6,    end: 10.5,  label: '6:00 – 10:30'  },
+  { name: 'Media mañana',      emoji: '🍎',  start: 10.5, end: 12,    label: '10:30 – 12:00' },
+  { name: 'Almuerzo',          emoji: '🍽️', start: 12,   end: 15.5,  label: '12:00 – 15:30' },
+  { name: 'Merienda',          emoji: '☕',  start: 15.5, end: 19,    label: '15:30 – 19:00' },
+  { name: 'Cena',              emoji: '🌙',  start: 19,   end: 23,    label: '19:00 – 23:00' },
+  { name: 'Colación nocturna', emoji: '🌃',  start: 23,   end: 30,    label: '23:00 – 6:00'  },
+];
+
+const DAY_NAMES  = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+// ── Storage ──────────────────────────────────────────────────────────────────
+function loadDB() { try { return JSON.parse(localStorage.getItem(DB_KEY) || '{}'); } catch { return {}; } }
+let _syncOnSave = true;
+function saveDB(data) {
+  localStorage.setItem(DB_KEY, JSON.stringify(data));
+  if (_syncOnSave) scheduleSync();
+}
+
+// ── Date utils ────────────────────────────────────────────────────────────────
+let currentKey = todayKey();
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function moveDay(delta) {
+  const d = new Date(currentKey + 'T12:00:00');
+  d.setDate(d.getDate() + delta);
+  currentKey = d.toISOString().slice(0, 10);
+  render();
+}
+
+function goToday() {
+  currentKey = todayKey();
+  render();
+}
+
+function formatDateLabel(key) {
+  const d = new Date(key + 'T12:00:00');
+  const today = todayKey();
+  const yest  = (() => { const t = new Date(); t.setDate(t.getDate()-1); return t.toISOString().slice(0,10); })();
+  let prefix = '';
+  if (key === today) prefix = 'Hoy — ';
+  else if (key === yest) prefix = 'Ayer — ';
+  return `${prefix}${DAY_NAMES[d.getDay()]} ${d.getDate()} de ${MONTH_NAMES[d.getMonth()]}`;
+}
+
+// ── Meal lookup ───────────────────────────────────────────────────────────────
+function mealByHour(hour) {
+  const h = (hour >= 0 && hour < 6) ? hour + 24 : hour; // 0-5 → 24-29 → nocturna
+  for (const m of MEALS) {
+    if (h >= m.start && h < m.end) return m.name;
+  }
+  return 'Colación nocturna';
+}
+
+// ── CRUD ──────────────────────────────────────────────────────────────────────
+function addEntry(dayKey, text) {
+  const db = loadDB();
+  if (!db[dayKey]) db[dayKey] = [];
+  const now  = new Date();
+  const hour = now.getHours() + now.getMinutes() / 60;
+  const entry = {
+    id:        Date.now(),
+    text:      text.trim(),
+    time:      now.toTimeString().slice(0, 5),
+    meal:      mealByHour(hour),
+    timestamp: now.getTime(),
+  };
+  db[dayKey].push(entry);
+  saveDB(db);
+  return entry;
+}
+
+function removeEntry(dayKey, id) {
+  const db = loadDB();
+  if (db[dayKey]) { db[dayKey] = db[dayKey].filter(e => e.id !== id); saveDB(db); }
+}
+
+function patchEntry(dayKey, id, newText) {
+  const db = loadDB();
+  const entry = (db[dayKey] || []).find(e => e.id === id);
+  if (entry) { entry.text = newText.trim(); saveDB(db); }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  document.getElementById('date-label').textContent = formatDateLabel(currentKey);
+
+  const db      = loadDB();
+  const entries = db[currentKey] || [];
+
+  // Group by meal
+  const byMeal = {};
+  MEALS.forEach(m => byMeal[m.name] = []);
+  entries.forEach(e => {
+    const key = byMeal[e.meal] ? e.meal : 'Colación nocturna';
+    byMeal[key].push(e);
+  });
+
+  const main = document.getElementById('main');
+  main.innerHTML = '';
+
+  // Meal cards
+  MEALS.forEach(meal => {
+    const list = (byMeal[meal.name] || []).sort((a, b) => a.timestamp - b.timestamp);
+    const card = document.createElement('div');
+    card.className = 'meal-card';
+
+    const badge = list.length ? `<span class="meal-badge">${list.length}</span>` : '';
+    card.innerHTML = `
+      <div class="meal-header">
+        <span class="meal-emoji">${meal.emoji}</span>
+        <div class="meal-info">
+          <div class="meal-name">${meal.name}</div>
+          <div class="meal-time-range">${meal.label}</div>
+        </div>
+        ${badge}
+      </div>
+      <div class="meal-entries" id="entries-${safeName(meal.name)}">
+        ${list.length === 0
+          ? '<div class="meal-empty">Sin registros</div>'
+          : list.map(renderEntryHTML).join('')}
+      </div>`;
+    main.appendChild(card);
+  });
+
+  // Export bar
+  const bar = document.createElement('div');
+  bar.className = 'export-bar';
+  bar.innerHTML = `
+    <button class="btn btn-green" onclick="showRetroModal()" style="margin-right:auto">✏️ Agregar registro atrasado</button>
+    <button class="btn btn-gray" onclick="exportDay()">📅 Este día</button>
+    <button class="btn btn-gray" onclick="showDayPicker()">📆 Días seleccionados</button>
+    <button class="btn btn-gray" onclick="exportAll()">📋 Todo el historial</button>`;
+  main.appendChild(bar);
+}
+
+function safeName(s) { return s.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, ''); }
+
+function renderEntryHTML(e) {
+  const camBtn = isDriveConnected()
+    ? `<button class="btn-icon" onclick="pickPhoto(${e.id},'${currentKey}')" title="${e.photoId ? 'Cambiar foto' : 'Agregar foto'}">📷</button>`
+    : '';
+  const thumb = e.photoThumbB64
+    ? `<div class="entry-photo">
+         <img class="photo-thumb" src="${e.photoThumbB64}"
+              onclick="openInDrive('${e.photoId}')" title="Ver en Drive">
+         <span class="photo-link" onclick="openInDrive('${e.photoId}')">Ver en Drive ↗</span>
+       </div>`
+    : '';
+  return `<div class="entry-row" id="row-${e.id}">
+    <span class="entry-time">${e.time}</span>
+    <div style="flex:1;min-width:0">
+      <div class="entry-text" id="txt-${e.id}">${esc(e.text)}</div>
+      ${thumb}
+    </div>
+    <div class="entry-actions">
+      ${camBtn}
+      <button class="btn-icon" onclick="startEdit(${e.id})" title="Editar">✏️</button>
+      <button class="btn-icon del" onclick="askDelete(${e.id})" title="Eliminar">🗑️</button>
+    </div>
+  </div>`;
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Inline edit ───────────────────────────────────────────────────────────────
+function startEdit(id) {
+  const db    = loadDB();
+  const entry = (db[currentKey] || []).find(e => e.id === id);
+  if (!entry) return;
+
+  const txtEl = document.getElementById(`txt-${id}`);
+  const actEl = document.getElementById(`row-${id}`).querySelector('.entry-actions');
+
+  txtEl.innerHTML = `<textarea class="inline-edit" id="ie-${id}" rows="2">${esc(entry.text)}</textarea>`;
+  actEl.innerHTML = `
+    <button class="btn-icon save-edit" onclick="commitEdit(${id})" title="Guardar">✓</button>
+    <button class="btn-icon" onclick="render()" title="Cancelar">✕</button>`;
+
+  const ta = document.getElementById(`ie-${id}`);
+  ta.focus();
+  ta.selectionStart = ta.value.length;
+  ta.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); commitEdit(id); }
+    if (ev.key === 'Escape') render();
+  });
+}
+
+function commitEdit(id) {
+  const ta = document.getElementById(`ie-${id}`);
+  if (!ta) return;
+  const val = ta.value.trim();
+  if (val) {
+    patchEntry(currentKey, id, val);
+    toast('✓ Registro actualizado');
+  }
+  render();
+}
+
+function askDelete(id) {
+  const db    = loadDB();
+  const entry = (db[currentKey] || []).find(e => e.id === id);
+  if (!entry) return;
+  if (confirm(`¿Eliminar este registro?\n\n"${entry.text}"`)) {
+    removeEntry(currentKey, id);
+    toast('🗑️ Eliminado');
+    render();
+  }
+}
+
+// ── Voice recognition ─────────────────────────────────────────────────────────
+let recog      = null;
+let recording  = false;
+
+(function initSpeech() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    document.getElementById('warn-box').style.display = 'block';
+    const btn = document.getElementById('mic-btn');
+    btn.style.opacity = '0.45';
+    btn.disabled = true;
+    btn.title = 'No disponible — usá Chrome o Edge';
+    return;
+  }
+
+  recog = new SR();
+  recog.lang            = 'es-AR';
+  recog.continuous      = false;
+  recog.interimResults  = true;
+  recog.maxAlternatives = 1;
+
+  recog.onstart = () => {
+    recording = true;
+    const btn = document.getElementById('mic-btn');
+    btn.classList.add('recording');
+    btn.textContent = '⏹';
+    setStatus('🔴 Escuchando... hablá ahora', true);
+  };
+
+  recog.onend = () => {
+    recording = false;
+    const btn = document.getElementById('mic-btn');
+    btn.classList.remove('recording');
+    btn.textContent = '🎤';
+    const val = document.getElementById('voice-text').value.trim();
+    setStatus(val ? 'Listo — revisá y presioná Guardar' : 'Listo — presioná el micrófono para hablar', false);
+  };
+
+  recog.onerror = ev => {
+    recording = false;
+    const btn = document.getElementById('mic-btn');
+    btn.classList.remove('recording');
+    btn.textContent = '🎤';
+    const msgs = {
+      'no-speech':   'No se detectó voz. Intentá de nuevo.',
+      'not-allowed': '⚠️ Permiso de micrófono denegado. Habilitalo en la barra del navegador.',
+      'audio-capture': '⚠️ No se detectó micrófono.',
+    };
+    setStatus(msgs[ev.error] || `Error: ${ev.error}`, false);
+  };
+
+  recog.onresult = ev => {
+    let interim = '', final = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const t = ev.results[i][0].transcript;
+      ev.results[i].isFinal ? (final += t) : (interim += t);
+    }
+
+    if (final) {
+      const ta  = document.getElementById('voice-text');
+      const sep = ta.value.trim() ? ' ' : '';
+      let add = final.trim();
+      if (!ta.value.trim()) add = add.charAt(0).toUpperCase() + add.slice(1);
+      ta.value = (ta.value + sep + add).trim();
+      syncTextStyle();
+    }
+
+    if (interim) setStatus(`💬 "${interim}"`, true);
+  };
+})();
+
+function toggleMic() {
+  if (!recog) { toast('⚠️ Reconocimiento de voz no disponible en este navegador'); return; }
+  if (recording) {
+    recog.stop();
+  } else {
+    try { recog.start(); } catch(e) { console.warn(e); }
+  }
+}
+
+function setStatus(msg, active) {
+  const el = document.getElementById('voice-status');
+  el.textContent = msg;
+  el.className   = active ? 'active' : '';
+}
+
+function syncTextStyle() {
+  const ta = document.getElementById('voice-text');
+  ta.classList.toggle('filled', ta.value.trim().length > 0);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('voice-text').addEventListener('input', syncTextStyle);
+  document.getElementById('voice-text').addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); saveEntry(); }
+  });
+});
+
+// ── Save entry ────────────────────────────────────────────────────────────────
+function saveEntry() {
+  const ta  = document.getElementById('voice-text');
+  const txt = ta.value.trim();
+
+  if (!txt) { toast('⚠️ Escribí o decí qué comiste primero'); return; }
+  if (recording) recog.stop();
+
+  const entry = addEntry(currentKey, txt);
+  ta.value = '';
+  syncTextStyle();
+
+  const hour = new Date().getHours() + new Date().getMinutes() / 60;
+  toast(`✓ Guardado en ${entry.meal} (${entry.time})`);
+  setStatus('¡Guardado! Presioná el micrófono para continuar', false);
+
+  // Always show today's view after saving so the entry is visible
+  currentKey = todayKey();
+  render();
+}
+
+function clearVoice() {
+  if (recording) recog && recog.stop();
+  document.getElementById('voice-text').value = '';
+  syncTextStyle();
+  setStatus('Listo — presioná el micrófono para hablar', false);
+}
+
+// ── CSV Export ────────────────────────────────────────────────────────────────
+function exportDay() {
+  const db      = loadDB();
+  const entries = (db[currentKey] || []).sort((a, b) => a.timestamp - b.timestamp);
+  if (!entries.length) { toast('⚠️ No hay registros para este día'); return; }
+
+  const rows = entries.map(e =>
+    `${currentKey},"${e.meal}","${e.time}","${e.text.replace(/"/g,'""')}"`);
+  downloadCSV(csvHeader() + rows.join('\n'), `comidas_${currentKey}.csv`);
+  toast(`✓ CSV exportado (${entries.length} registros)`);
+}
+
+function exportAll() {
+  const db   = loadDB();
+  const keys = Object.keys(db).sort();
+  if (!keys.length) { toast('⚠️ No hay registros todavía'); return; }
+
+  const rows = [];
+  let total  = 0;
+  keys.forEach(key => {
+    (db[key] || []).sort((a, b) => a.timestamp - b.timestamp).forEach(e => {
+      rows.push(`${key},"${e.meal}","${e.time}","${e.text.replace(/"/g,'""')}"`);
+      total++;
+    });
+  });
+  downloadCSV(csvHeader() + rows.join('\n'), 'comidas_historial.csv');
+  toast(`✓ Exportados ${total} registros (${keys.length} días)`);
+}
+
+function csvHeader() {
+  return '﻿' + 'Fecha,Comida,Hora,Descripción\n'; // BOM para que Excel reconozca UTF-8
+}
+
+function downloadCSV(content, filename) {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Google Drive integration ──────────────────────────────────────────────────
+const DRIVE_CFG_KEY = 'nutricion_drive_cfg';
+
+function getDriveCfg()      { try { return JSON.parse(localStorage.getItem(DRIVE_CFG_KEY) || '{}'); } catch { return {}; } }
+function saveDriveCfg(cfg)  { localStorage.setItem(DRIVE_CFG_KEY, JSON.stringify(cfg)); }
+
+let accessToken    = null;
+let tokenExpiry    = 0;
+let tokenClient    = null;
+let driveReady     = false;
+let driveFolderId  = null;
+let dataFileId     = null;
+let syncTimer      = null;
+let lastSyncTime   = null;
+
+function isDriveConnected() {
+  return driveReady && !!accessToken && Date.now() < tokenExpiry;
+}
+
+function initDrive() {
+  const cfg = getDriveCfg();
+  if (!cfg.clientId) return;
+  if (document.querySelector('script[data-gsi]')) { setupTokenClient(cfg.clientId); return; }
+  const s = document.createElement('script');
+  s.src = 'https://accounts.google.com/gsi/client';
+  s.setAttribute('data-gsi', '1');
+  s.onload = () => setupTokenClient(cfg.clientId);
+  document.head.appendChild(s);
+  updateDriveBtn();
+}
+
+function setupTokenClient(clientId) {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: 'https://www.googleapis.com/auth/drive.file',
+    callback: onTokenResponse,
+  });
+  driveReady = true;
+  updateDriveBtn();
+}
+
+function onTokenResponse(resp) {
+  if (resp.error) { toast('⚠️ Error Drive: ' + resp.error); updateDriveBtn(); return; }
+  accessToken   = resp.access_token;
+  tokenExpiry   = Date.now() + (resp.expires_in - 60) * 1000;
+  driveFolderId = null;
+  dataFileId    = null;
+  updateDriveBtn();
+  syncFromDrive();
+}
+
+function handleDriveBtn() {
+  const cfg = getDriveCfg();
+  if (!cfg.clientId) { showDriveSettings(); return; }
+  if (isDriveConnected()) { showDriveSettings(); return; }
+  if (!driveReady) { initDrive(); setTimeout(() => tokenClient?.requestAccessToken({ prompt: 'none' }), 1500); return; }
+  tokenClient.requestAccessToken({ prompt: '' });
+}
+
+function updateDriveBtn() {
+  const btn = document.getElementById('drive-btn');
+  if (!btn) return;
+  const cfg = getDriveCfg();
+  if (!cfg.clientId) {
+    btn.textContent = '☁️ Configurar Drive';
+    btn.className   = 'drive-btn';
+  } else if (isDriveConnected()) {
+    const t = lastSyncTime ? ` · ${lastSyncTime.toTimeString().slice(0,5)}` : '';
+    btn.textContent = `✓ Drive${t}`;
+    btn.className   = 'drive-btn connected';
+  } else {
+    btn.textContent = '☁️ Conectar Drive';
+    btn.className   = 'drive-btn';
+  }
+}
+
+// Settings modal
+function showDriveSettings() {
+  const cfg       = getDriveCfg();
+  const connected = isDriveConnected();
+  const overlay   = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'drive-settings-modal';
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeDriveSettings(); });
+
+  overlay.innerHTML = `
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:540px">
+      <div class="modal-header">
+        <div class="modal-title">☁️ Google Drive — configuración</div>
+        <button class="btn-icon" onclick="closeDriveSettings()">✕</button>
+      </div>
+      <div class="modal-body modal-body-pad">
+        ${connected ? `<div class="drive-connected-badge">✓ Conectado · las fotos se guardan en "Comidas - Seguimiento" en tu Drive</div>` : ''}
+
+        <p style="font-size:.87rem;color:var(--text-muted);margin-bottom:14px">
+          Seguí estos pasos para obtener tu <strong>Client ID</strong> de Google (es gratis):
+        </p>
+
+        <div class="setup-step">
+          <span class="step-num">1</span>
+          <span>Entrá a <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a> y creá un proyecto nuevo.</span>
+        </div>
+        <div class="setup-step">
+          <span class="step-num">2</span>
+          <span><strong>APIs y servicios → Biblioteca</strong> → buscá <em>Google Drive API</em> → Habilitar.</span>
+        </div>
+        <div class="setup-step">
+          <span class="step-num">3</span>
+          <span><strong>Pantalla de consentimiento OAuth → Externo</strong> → completá nombre de la app y tu email → Guardar.</span>
+        </div>
+        <div class="setup-step">
+          <span class="step-num">4</span>
+          <span><strong>Credenciales → Crear credenciales → ID de cliente OAuth 2.0</strong> → Tipo: <em>Aplicación web</em>.<br>
+          En <em>Orígenes de JavaScript autorizados</em> agregá <code>null</code> (para archivo local) → Crear.</span>
+        </div>
+        <div class="setup-step">
+          <span class="step-num">5</span>
+          <span>Copiá el <strong>ID de cliente</strong> y pegalo acá:</span>
+        </div>
+
+        <div class="form-group" style="margin-top:4px">
+          <label class="form-label">Client ID</label>
+          <input class="client-id-input" id="drive-cid-input"
+            placeholder="xxxxxxxx.apps.googleusercontent.com"
+            value="${esc(cfg.clientId || '')}">
+        </div>
+
+        <div class="drive-note">
+          💡 El Client ID es público — no es un secreto. La app solo puede ver archivos que ella misma creó (scope <code>drive.file</code>), nunca el resto de tu Drive.
+        </div>
+      </div>
+      <div class="modal-footer">
+        ${connected ? `<button class="btn btn-gray" style="margin-right:auto" onclick="disconnectDrive()">Desconectar</button>` : ''}
+        <button class="btn btn-gray" onclick="closeDriveSettings()">Cancelar</button>
+        <button class="btn btn-green" onclick="saveDriveSettings()">✓ Guardar y conectar</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  document._driveEsc = e => { if (e.key === 'Escape') closeDriveSettings(); };
+  document.addEventListener('keydown', document._driveEsc);
+  setTimeout(() => document.getElementById('drive-cid-input')?.focus(), 50);
+}
+
+function closeDriveSettings() {
+  document.getElementById('drive-settings-modal')?.remove();
+  if (document._driveEsc) { document.removeEventListener('keydown', document._driveEsc); delete document._driveEsc; }
+}
+
+function saveDriveSettings() {
+  const val = document.getElementById('drive-cid-input')?.value.trim();
+  if (!val) { toast('⚠️ Ingresá el Client ID'); return; }
+  saveDriveCfg({ clientId: val });
+  closeDriveSettings();
+  // Reset and re-init
+  accessToken = null; tokenExpiry = 0; tokenClient = null; driveReady = false; driveFolderId = null;
+  initDrive();
+  setTimeout(() => { if (tokenClient) tokenClient.requestAccessToken({ prompt: '' }); }, 1500);
+}
+
+function disconnectDrive() {
+  if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
+  accessToken = null; tokenExpiry = 0; driveFolderId = null; dataFileId = null; lastSyncTime = null;
+  closeDriveSettings();
+  updateDriveBtn();
+  render();
+  toast('Desconectado de Drive');
+}
+
+// Folder management
+async function getFolder() {
+  if (driveFolderId) return driveFolderId;
+  const r = await driveGET(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='Comidas - Seguimiento' and mimeType='application/vnd.google-apps.folder' and trashed=false")}&fields=files(id)&spaces=drive`
+  );
+  const data = await r.json();
+  if (data.files?.length) { driveFolderId = data.files[0].id; return driveFolderId; }
+  const cr = await drivePOST('https://www.googleapis.com/drive/v3/files', {
+    name: 'Comidas - Seguimiento',
+    mimeType: 'application/vnd.google-apps.folder',
+  });
+  driveFolderId = (await cr.json()).id;
+  return driveFolderId;
+}
+
+function driveGET(url)       { return fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } }); }
+function drivePOST(url, body) {
+  return fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
+
+// Image compression
+async function compressImage(file) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1200;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) { const r = Math.min(MAX/width, MAX/height); width = Math.round(width*r); height = Math.round(height*r); }
+      const c = document.createElement('canvas');
+      c.width = width; c.height = height;
+      c.getContext('2d').drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      c.toBlob(resolve, 'image/jpeg', 0.82);
+    };
+    img.src = url;
+  });
+}
+
+// Fetch thumbnail from Drive as base64 to cache locally
+async function fetchThumb(fileId) {
+  const r    = await driveGET(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink`);
+  const data = await r.json();
+  if (!data.thumbnailLink) return null;
+  try {
+    const tr   = await fetch(data.thumbnailLink.replace(/=s\d+$/, '=s200'), { headers: { Authorization: `Bearer ${accessToken}` } });
+    const blob = await tr.blob();
+    return await new Promise(res => { const rd = new FileReader(); rd.onload = () => res(rd.result); rd.readAsDataURL(blob); });
+  } catch { return null; }
+}
+
+// Upload overlay
+function showUploadOverlay(msg) {
+  let el = document.getElementById('upload-overlay');
+  if (!el) { el = document.createElement('div'); el.className = 'upload-overlay'; el.id = 'upload-overlay'; document.body.appendChild(el); }
+  el.innerHTML = `<div class="upload-box"><div class="spinner"></div><p>${msg}</p></div>`;
+}
+function hideUploadOverlay() { document.getElementById('upload-overlay')?.remove(); }
+
+// Photo pick & upload
+let pendingEntryId  = null;
+let pendingEntryKey = null;
+
+function pickPhoto(entryId, dayKey) {
+  if (!isDriveConnected()) { toast('⚠️ Conectá Drive primero'); return; }
+  pendingEntryId  = entryId;
+  pendingEntryKey = dayKey;
+  document.getElementById('photo-file-input').click();
+}
+
+async function onPhotoSelected(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file || !pendingEntryId) return;
+
+  const entryId = pendingEntryId;
+  const dayKey  = pendingEntryKey;
+
+  if (!isDriveConnected()) { toast('⚠️ Sesión expirada — reconectá Drive'); tokenClient?.requestAccessToken({ prompt: '' }); return; }
+
+  try {
+    showUploadOverlay('Comprimiendo imagen…');
+    const blob = await compressImage(file);
+
+    const db    = loadDB();
+    const entry = (db[dayKey] || []).find(e => e.id === entryId);
+    const fname = `${dayKey}_${(entry?.time || '').replace(':', '')}_${entryId}.jpg`;
+
+    showUploadOverlay('Subiendo a Google Drive…');
+    const folderId = await getFolder();
+
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify({ name: fname, parents: [folderId] })], { type: 'application/json' }));
+    form.append('file', blob, fname);
+
+    const up = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',
+      { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }
+    );
+    if (!up.ok) throw new Error(`HTTP ${up.status}`);
+    const { id: photoId, webViewLink } = await up.json();
+
+    showUploadOverlay('Generando miniatura…');
+    const thumbB64 = await fetchThumb(photoId);
+
+    // Persist to DB
+    const db2 = loadDB();
+    const e2  = (db2[dayKey] || []).find(e => e.id === entryId);
+    if (e2) { e2.photoId = photoId; e2.photoWebLink = webViewLink; e2.photoThumbB64 = thumbB64; saveDB(db2); }
+
+    hideUploadOverlay();
+    toast('✓ Foto subida a Drive');
+    currentKey = dayKey;
+    render();
+
+  } catch (err) {
+    hideUploadOverlay();
+    console.error(err);
+    toast('⚠️ Error al subir: ' + err.message);
+  }
+}
+
+function openInDrive(fileId) {
+  window.open(`https://drive.google.com/file/d/${fileId}/view`, '_blank');
+}
+
+// ── Drive data sync ───────────────────────────────────────────────────────────
+function scheduleSync() {
+  if (!isDriveConnected()) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(pushToDrive, 2000);
+}
+
+async function syncFromDrive() {
+  if (!isDriveConnected()) return;
+  try {
+    const folderId = await getFolder();
+    const q = encodeURIComponent(`name='comidas_data.json' and '${folderId}' in parents and trashed=false`);
+    const r = await driveGET(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&spaces=drive`);
+    const list = await r.json();
+
+    if (list.files?.length) {
+      dataFileId = list.files[0].id;
+      const cr = await driveGET(`https://www.googleapis.com/drive/v3/files/${dataFileId}?alt=media`);
+      const driveData = await cr.json();
+      _syncOnSave = false;
+      saveDB(driveData);
+      _syncOnSave = true;
+      lastSyncTime = new Date();
+      updateDriveBtn();
+      render();
+      toast('✓ Datos sincronizados desde Drive');
+    } else {
+      await pushToDrive();
+      toast('✓ Conectado a Google Drive');
+    }
+  } catch (err) {
+    console.error('syncFromDrive:', err);
+    toast('⚠️ Error al sincronizar: ' + err.message);
+  }
+}
+
+async function pushToDrive() {
+  if (!isDriveConnected()) return;
+  try {
+    const folderId = await getFolder();
+    const content  = JSON.stringify(loadDB());
+
+    if (dataFileId) {
+      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dataFileId}?uploadType=media`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: content,
+      });
+    } else {
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify({ name: 'comidas_data.json', parents: [folderId] })], { type: 'application/json' }));
+      form.append('file', new Blob([content], { type: 'application/json' }), 'comidas_data.json');
+      const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: form,
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      dataFileId = (await r.json()).id;
+    }
+    lastSyncTime = new Date();
+    updateDriveBtn();
+  } catch (err) {
+    console.error('pushToDrive:', err);
+  }
+}
+
+// ── Retro entry modal ─────────────────────────────────────────────────────────
+let retroRecog     = null;
+let retroRecording = false;
+
+function showRetroModal() {
+  const now     = new Date();
+  const today   = todayKey();
+  const defDate = currentKey <= today ? currentKey : today;
+  const defTime = now.toTimeString().slice(0, 5);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'retro-modal';
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeRetroModal(); });
+
+  overlay.innerHTML = `
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:500px">
+      <div class="modal-header">
+        <div class="modal-title">✏️ Agregar registro atrasado</div>
+        <button class="btn-icon" onclick="closeRetroModal()" title="Cerrar">✕</button>
+      </div>
+      <div class="modal-body modal-body-pad">
+        <div class="form-group">
+          <label class="form-label">Fecha</label>
+          <input type="date" id="retro-date" max="${today}" value="${defDate}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Hora</label>
+          <div class="form-row">
+            <input type="time" id="retro-time" value="${defTime}" oninput="updateRetroMeal()">
+            <div class="meal-chip" id="retro-meal-chip">${mealLabelForTime(defTime)}</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">¿Qué comiste?</label>
+          <div class="retro-voice-row">
+            <button class="retro-mic" id="retro-mic" onclick="toggleRetroMic()" title="Hablar">🎤</button>
+            <textarea class="retro-textarea" id="retro-text"
+              placeholder="Describí qué comiste..."></textarea>
+          </div>
+          <div class="retro-status" id="retro-status"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-gray" onclick="closeRetroModal()">Cancelar</button>
+        <button class="btn btn-green" onclick="saveRetroEntry()">✓ Guardar</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  if (!hasSpeechAPI()) {
+    const mic = document.getElementById('retro-mic');
+    mic.disabled = true;
+    mic.title = 'No disponible — usá Chrome o Edge';
+  }
+
+  document._retroEsc = e => { if (e.key === 'Escape') closeRetroModal(); };
+  document.addEventListener('keydown', document._retroEsc);
+
+  document.getElementById('retro-date').focus();
+}
+
+function closeRetroModal() {
+  if (retroRecording && retroRecog) retroRecog.stop();
+  retroRecog    = null;
+  retroRecording = false;
+  const el = document.getElementById('retro-modal');
+  if (el) el.remove();
+  if (document._retroEsc) {
+    document.removeEventListener('keydown', document._retroEsc);
+    delete document._retroEsc;
+  }
+}
+
+function mealLabelForTime(timeStr) {
+  const [h, m]  = timeStr.split(':').map(Number);
+  const hour    = h + m / 60;
+  const meal    = MEALS.find(ml => {
+    const hh = (hour >= 0 && hour < 6) ? hour + 24 : hour;
+    return hh >= ml.start && hh < ml.end;
+  }) || MEALS[MEALS.length - 1];
+  return `${meal.emoji} ${meal.name}`;
+}
+
+function updateRetroMeal() {
+  const timeVal = document.getElementById('retro-time').value;
+  const chip    = document.getElementById('retro-meal-chip');
+  if (chip && timeVal) chip.textContent = mealLabelForTime(timeVal);
+}
+
+function hasSpeechAPI() {
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+
+function toggleRetroMic() {
+  if (!hasSpeechAPI()) return;
+  if (retroRecording) { retroRecog.stop(); return; }
+
+  const SR   = window.SpeechRecognition || window.webkitSpeechRecognition;
+  retroRecog = new SR();
+  retroRecog.lang           = 'es-AR';
+  retroRecog.continuous     = false;
+  retroRecog.interimResults = true;
+
+  retroRecog.onstart = () => {
+    retroRecording = true;
+    const btn = document.getElementById('retro-mic');
+    if (btn) { btn.classList.add('recording'); btn.textContent = '⏹'; }
+    setRetroStatus('🔴 Escuchando... hablá ahora', true);
+  };
+
+  retroRecog.onend = () => {
+    retroRecording = false;
+    const btn = document.getElementById('retro-mic');
+    if (btn) { btn.classList.remove('recording'); btn.textContent = '🎤'; }
+    setRetroStatus('', false);
+  };
+
+  retroRecog.onerror = ev => {
+    retroRecording = false;
+    const btn = document.getElementById('retro-mic');
+    if (btn) { btn.classList.remove('recording'); btn.textContent = '🎤'; }
+    const msgs = {
+      'no-speech':     'No se detectó voz. Intentá de nuevo.',
+      'not-allowed':   '⚠️ Permiso de micrófono denegado.',
+      'audio-capture': '⚠️ No se detectó micrófono.',
+    };
+    setRetroStatus(msgs[ev.error] || `Error: ${ev.error}`, false);
+  };
+
+  retroRecog.onresult = ev => {
+    let interim = '', final = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const t = ev.results[i][0].transcript;
+      ev.results[i].isFinal ? (final += t) : (interim += t);
+    }
+    if (interim) setRetroStatus(`💬 "${interim}"`, true);
+    if (final) {
+      const ta  = document.getElementById('retro-text');
+      if (!ta) return;
+      const sep = ta.value.trim() ? ' ' : '';
+      let add   = final.trim();
+      if (!ta.value.trim()) add = add.charAt(0).toUpperCase() + add.slice(1);
+      ta.value  = (ta.value + sep + add).trim();
+    }
+  };
+
+  try { retroRecog.start(); } catch(e) { console.warn(e); }
+}
+
+function setRetroStatus(msg, active) {
+  const el = document.getElementById('retro-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className   = 'retro-status' + (active ? ' active' : '');
+}
+
+function saveRetroEntry() {
+  const dateVal = document.getElementById('retro-date').value;
+  const timeVal = document.getElementById('retro-time').value;
+  const text    = (document.getElementById('retro-text').value || '').trim();
+
+  if (!dateVal) { setRetroStatus('⚠️ Seleccioná una fecha', false); return; }
+  if (!timeVal) { setRetroStatus('⚠️ Ingresá la hora', false); return; }
+  if (!text)    { setRetroStatus('⚠️ Describí qué comiste', false); return; }
+
+  if (retroRecording && retroRecog) retroRecog.stop();
+
+  const [h, m] = timeVal.split(':').map(Number);
+  const hour   = h + m / 60;
+  const meal   = (MEALS.find(ml => {
+    const hh = (hour >= 0 && hour < 6) ? hour + 24 : hour;
+    return hh >= ml.start && hh < ml.end;
+  }) || MEALS[MEALS.length - 1]).name;
+
+  // Build a timestamp anchored to the chosen date+time in local timezone
+  const [yr, mo, dy] = dateVal.split('-').map(Number);
+  const ts = new Date(yr, mo - 1, dy, h, m, 0).getTime();
+
+  const db = loadDB();
+  if (!db[dateVal]) db[dateVal] = [];
+  db[dateVal].push({ id: ts, text, time: timeVal, meal, timestamp: ts });
+  saveDB(db);
+
+  const mealLabel = mealLabelForTime(timeVal);
+  closeRetroModal();
+  toast(`✓ Guardado: ${mealLabel} del ${formatDateFull(dateVal)} (${timeVal})`);
+
+  // Navigate to the day the user just edited so they can verify
+  currentKey = dateVal;
+  render();
+}
+
+// ── Day picker modal ──────────────────────────────────────────────────────────
+function formatDateFull(key) {
+  const d = new Date(key + 'T12:00:00');
+  return `${DAY_NAMES[d.getDay()]} ${d.getDate()} de ${MONTH_NAMES[d.getMonth()]} de ${d.getFullYear()}`;
+}
+
+function showDayPicker() {
+  const db   = loadDB();
+  const keys = Object.keys(db).filter(k => (db[k] || []).length > 0).sort().reverse();
+  if (!keys.length) { toast('⚠️ No hay registros todavía'); return; }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'day-picker';
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeDayPicker(); });
+
+  overlay.innerHTML = `
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title">📆 Seleccionar días a exportar</div>
+        <button class="btn-icon" onclick="closeDayPicker()" title="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        ${keys.map(key => {
+          const count = (db[key] || []).length;
+          return `<label class="day-row">
+            <input type="checkbox" class="day-cb" value="${key}" onchange="updatePickerCount()">
+            <div class="day-row-info">
+              <div class="day-row-date">${formatDateFull(key)}</div>
+              <div class="day-row-count">${count} registro${count !== 1 ? 's' : ''}</div>
+            </div>
+          </label>`;
+        }).join('')}
+      </div>
+      <div class="modal-footer">
+        <button class="btn-link" id="picker-toggle" onclick="pickerToggleAll()">Seleccionar todo</button>
+        <span class="selected-count" id="picker-count">0 días seleccionados</span>
+        <button class="btn btn-gray" onclick="closeDayPicker()">Cancelar</button>
+        <button class="btn btn-green" onclick="exportSelected()">✓ Exportar</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  document._pickerEsc = e => { if (e.key === 'Escape') closeDayPicker(); };
+  document.addEventListener('keydown', document._pickerEsc);
+}
+
+function closeDayPicker() {
+  const el = document.getElementById('day-picker');
+  if (el) el.remove();
+  if (document._pickerEsc) {
+    document.removeEventListener('keydown', document._pickerEsc);
+    delete document._pickerEsc;
+  }
+}
+
+function updatePickerCount() {
+  const checked = document.querySelectorAll('.day-cb:checked').length;
+  const total   = document.querySelectorAll('.day-cb').length;
+  const countEl = document.getElementById('picker-count');
+  const toggleEl = document.getElementById('picker-toggle');
+  if (countEl) countEl.textContent = `${checked} día${checked !== 1 ? 's' : ''} seleccionado${checked !== 1 ? 's' : ''}`;
+  if (toggleEl) toggleEl.textContent = checked === total ? 'Deseleccionar todo' : 'Seleccionar todo';
+}
+
+function pickerToggleAll() {
+  const cbs     = document.querySelectorAll('.day-cb');
+  const allOn   = Array.from(cbs).every(cb => cb.checked);
+  cbs.forEach(cb => cb.checked = !allOn);
+  updatePickerCount();
+}
+
+function exportSelected() {
+  const selected = Array.from(document.querySelectorAll('.day-cb:checked')).map(cb => cb.value).sort();
+  if (!selected.length) { toast('⚠️ Seleccioná al menos un día'); return; }
+
+  const db   = loadDB();
+  const rows = [];
+  let total  = 0;
+  selected.forEach(key => {
+    (db[key] || []).sort((a, b) => a.timestamp - b.timestamp).forEach(e => {
+      rows.push(`${key},"${e.meal}","${e.time}","${e.text.replace(/"/g,'""')}"`);
+      total++;
+    });
+  });
+
+  const filename = selected.length === 1
+    ? `comidas_${selected[0]}.csv`
+    : `comidas_${selected[0]}_al_${selected[selected.length - 1]}.csv`;
+
+  downloadCSV(csvHeader() + rows.join('\n'), filename);
+  closeDayPicker();
+  toast(`✓ Exportados ${total} registros (${selected.length} días)`);
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+render();
+initDrive();
+</script>
+</body>
+</html>
