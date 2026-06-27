@@ -977,6 +977,7 @@ function renderEntryHTML(e) {
     </div>
     <div class="entry-actions">
       ${camBtn}
+      <button class="btn-icon" onclick="copyEntry(${e.id})" title="Copiar texto a hoy">📋</button>
       <button class="btn-icon" onclick="startEdit(${e.id})" title="Editar">✏️</button>
       <button class="btn-icon del" onclick="askDelete(${e.id})" title="Eliminar">🗑️</button>
     </div>
@@ -1030,6 +1031,19 @@ function askDelete(id) {
     toast('🗑️ Eliminado');
     render();
   }
+}
+
+function copyEntry(id) {
+  const db    = loadDB();
+  const entry = (db[currentKey] || []).find(e => e.id === id);
+  if (!entry) return;
+  currentKey = todayKey();
+  render();
+  const ta = document.getElementById('voice-text');
+  ta.value = entry.text;
+  syncTextStyle();
+  ta.focus();
+  toast('📋 Texto copiado — presioná Guardar para registrarlo ahora');
 }
 
 // ── Voice recognition ─────────────────────────────────────────────────────────
@@ -1207,15 +1221,15 @@ const AUTH_KEY      = 'nutricion_auth_v1';
 
 function isSessionValid() {
   try {
-    const s = JSON.parse(sessionStorage.getItem(AUTH_KEY) || 'null');
+    const s = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
     return s && s.email === ALLOWED_EMAIL && Date.now() < s.exp;
   } catch { return false; }
 }
 
 function saveSession() {
-  sessionStorage.setItem(AUTH_KEY, JSON.stringify({
+  localStorage.setItem(AUTH_KEY, JSON.stringify({
     email: ALLOWED_EMAIL,
-    exp:   Date.now() + 8 * 60 * 60 * 1000, // 8 horas
+    exp:   Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 días
   }));
 }
 
@@ -1507,16 +1521,29 @@ async function compressImage(file) {
   });
 }
 
-// Fetch thumbnail from Drive as base64 to cache locally
-async function fetchThumb(fileId) {
-  const r    = await driveGET(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink`);
-  const data = await r.json();
-  if (!data.thumbnailLink) return null;
-  try {
-    const tr   = await fetch(data.thumbnailLink.replace(/=s\d+$/, '=s200'), { headers: { Authorization: `Bearer ${accessToken}` } });
-    const blob = await tr.blob();
-    return await new Promise(res => { const rd = new FileReader(); rd.onload = () => res(rd.result); rd.readAsDataURL(blob); });
-  } catch { return null; }
+// Generate thumbnail locally from the compressed image blob (no Drive API needed)
+async function createLocalThumb(blob) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      const SIZE = 200;
+      const ratio = Math.min(SIZE / img.width, SIZE / img.height);
+      const w = Math.round(img.width * ratio);
+      const h = Math.round(img.height * ratio);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      c.toBlob(b => {
+        const rd = new FileReader();
+        rd.onload = () => resolve(rd.result);
+        rd.readAsDataURL(b);
+      }, 'image/jpeg', 0.75);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
 }
 
 // Upload overlay
@@ -1570,8 +1597,7 @@ async function onPhotoSelected(input) {
     if (!up.ok) throw new Error(`HTTP ${up.status}`);
     const { id: photoId, webViewLink } = await up.json();
 
-    showUploadOverlay('Generando miniatura…');
-    const thumbB64 = await fetchThumb(photoId);
+    const thumbB64 = await createLocalThumb(blob);
 
     // Persist to DB
     const db2 = loadDB();
