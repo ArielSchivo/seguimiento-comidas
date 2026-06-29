@@ -949,10 +949,11 @@ function render() {
   const bar = document.createElement('div');
   bar.className = 'export-bar';
   bar.innerHTML = `
-    <button class="btn btn-green" onclick="showRetroModal()" style="margin-right:auto">✏️ Agregar registro atrasado</button>
+    <button class="btn btn-green" onclick="showRetroModal()">✏️ Atrasado</button>
+    <button class="btn btn-green" onclick="showCopyHistoryModal()">📋 Del historial</button>
     <button class="btn btn-gray" onclick="exportDay()">📅 Este día</button>
-    <button class="btn btn-gray" onclick="showDayPicker()">📆 Días seleccionados</button>
-    <button class="btn btn-gray" onclick="exportAll()">📋 Todo el historial</button>`;
+    <button class="btn btn-gray" onclick="showDayPicker()">📆 Días</button>
+    <button class="btn btn-gray" onclick="exportAll()">📋 Todo</button>`;
   main.appendChild(bar);
 }
 
@@ -977,7 +978,6 @@ function renderEntryHTML(e) {
     </div>
     <div class="entry-actions">
       ${camBtn}
-      <button class="btn-icon" onclick="copyEntry(${e.id})" title="Copiar texto a hoy">📋</button>
       <button class="btn-icon" onclick="startEdit(${e.id})" title="Editar">✏️</button>
       <button class="btn-icon del" onclick="askDelete(${e.id})" title="Eliminar">🗑️</button>
     </div>
@@ -1033,17 +1033,132 @@ function askDelete(id) {
   }
 }
 
-function copyEntry(id) {
-  const db    = loadDB();
-  const entry = (db[currentKey] || []).find(e => e.id === id);
-  if (!entry) return;
-  currentKey = todayKey();
+// ── Copiar del historial ──────────────────────────────────────────────────────
+let _pendingCopyText = null;
+
+function showCopyHistoryModal() {
+  let overlay = document.getElementById('copy-history-modal');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'copy-history-modal';
+    overlay.addEventListener('click', ev => { if (ev.target === overlay) closeCopyHistoryModal(); });
+    document.body.appendChild(overlay);
+    document._copyEsc = ev => { if (ev.key === 'Escape') closeCopyHistoryModal(); };
+    document.addEventListener('keydown', document._copyEsc);
+  }
+  renderCopyStep1(overlay);
+  setTimeout(() => document.getElementById('copy-search')?.focus(), 80);
+}
+
+function renderCopyStep1(overlay) {
+  const db = loadDB();
+  const allEntries = [];
+  Object.keys(db).sort().reverse().forEach(key => {
+    (db[key] || []).forEach(e => allEntries.push({ text: e.text, date: key, meal: e.meal }));
+  });
+  if (!allEntries.length) {
+    closeCopyHistoryModal();
+    toast('⚠️ No hay comidas registradas para copiar');
+    return;
+  }
+  const seen = new Set();
+  const unique = allEntries.filter(e => {
+    const k = e.text.toLowerCase().trim();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  overlay.innerHTML = `
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:480px">
+      <div class="modal-header">
+        <div class="modal-title">📋 Elegir comida anterior</div>
+        <button class="btn-icon" onclick="closeCopyHistoryModal()">✕</button>
+      </div>
+      <div style="padding:10px 16px;border-bottom:1px solid var(--border)">
+        <input type="text" id="copy-search" placeholder="Buscar..."
+          oninput="filterCopyHistory(this.value)"
+          style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 11px;font-size:.88rem;font-family:inherit;background:var(--bg);color:var(--text);outline:none">
+      </div>
+      <div class="modal-body" id="copy-history-list">
+        ${unique.map(e => `
+          <div class="day-row copy-hist-item" data-text="${esc(e.text)}"
+            onclick="chooseMealMoment(this.dataset.text)">
+            <div class="day-row-info">
+              <div class="day-row-date" style="font-weight:500">${esc(e.text)}</div>
+              <div class="day-row-count">${formatDateFull(e.date)} · ${e.meal}</div>
+            </div>
+            <span style="color:var(--accent);font-size:1.1rem;font-weight:700">›</span>
+          </div>`).join('')}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-gray" onclick="closeCopyHistoryModal()">Cancelar</button>
+      </div>
+    </div>`;
+}
+
+function filterCopyHistory(q) {
+  const lq = q.toLowerCase().trim();
+  document.querySelectorAll('.copy-hist-item').forEach(el => {
+    el.style.display = (!lq || el.dataset.text.toLowerCase().includes(lq)) ? '' : 'none';
+  });
+}
+
+function chooseMealMoment(text) {
+  _pendingCopyText = text;
+  const overlay = document.getElementById('copy-history-modal');
+  if (!overlay) return;
+  overlay.innerHTML = `
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:460px">
+      <div class="modal-header">
+        <button class="btn-icon" onclick="showCopyHistoryModal()" title="Volver">◀</button>
+        <div class="modal-title">¿En qué momento del día?</div>
+        <button class="btn-icon" onclick="closeCopyHistoryModal()">✕</button>
+      </div>
+      <div style="padding:14px 20px">
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:9px 13px;margin-bottom:14px;font-size:.88rem;color:var(--text);word-break:break-word">
+          "${esc(text)}"
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          ${MEALS.map((m, i) => `
+            <button onclick="saveCopiedEntry(${i})"
+              style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);cursor:pointer;font-family:inherit;font-size:.9rem;text-align:left;width:100%;transition:background .1s"
+              onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='var(--surface)'">
+              <span style="font-size:1.2rem">${m.emoji}</span>
+              <div>
+                <div style="font-weight:600;color:var(--text)">${m.name}</div>
+                <div style="font-size:.75rem;color:var(--text-muted)">${m.label}</div>
+              </div>
+            </button>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+function saveCopiedEntry(mealIdx) {
+  const text = _pendingCopyText;
+  if (!text) return;
+  const meal   = MEALS[mealIdx];
+  const rawMid = (meal.start + meal.end) / 2;
+  const h      = Math.floor(rawMid % 24);
+  const m      = Math.round((rawMid % 1) * 60);
+  const timeStr = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  const today  = todayKey();
+  const db     = loadDB();
+  if (!db[today]) db[today] = [];
+  const ts = Date.now();
+  db[today].push({ id: ts, text: text.trim(), time: timeStr, meal: meal.name, timestamp: ts });
+  saveDB(db);
+  closeCopyHistoryModal();
+  currentKey = today;
   render();
-  const ta = document.getElementById('voice-text');
-  ta.value = entry.text;
-  syncTextStyle();
-  ta.focus();
-  toast('📋 Texto copiado — presioná Guardar para registrarlo ahora');
+  toast(`✓ Guardado en ${meal.emoji} ${meal.name}`);
+}
+
+function closeCopyHistoryModal() {
+  _pendingCopyText = null;
+  document.getElementById('copy-history-modal')?.remove();
+  if (document._copyEsc) { document.removeEventListener('keydown', document._copyEsc); delete document._copyEsc; }
 }
 
 // ── Voice recognition ─────────────────────────────────────────────────────────
@@ -1290,14 +1405,15 @@ const DRIVE_CFG_KEY = 'nutricion_drive_cfg';
 function getDriveCfg()      { try { return JSON.parse(localStorage.getItem(DRIVE_CFG_KEY) || '{}'); } catch { return {}; } }
 function saveDriveCfg(cfg)  { localStorage.setItem(DRIVE_CFG_KEY, JSON.stringify(cfg)); }
 
-let accessToken    = null;
-let tokenExpiry    = 0;
-let tokenClient    = null;
-let driveReady     = false;
-let driveFolderId  = null;
-let dataFileId     = null;
-let syncTimer      = null;
-let lastSyncTime   = null;
+let accessToken        = null;
+let tokenExpiry        = 0;
+let tokenClient        = null;
+let driveReady         = false;
+let driveFolderId      = null;
+let dataFileId         = null;
+let syncTimer          = null;
+let lastSyncTime       = null;
+let silentRefreshMode  = false;
 
 function isDriveConnected() {
   return driveReady && !!accessToken && Date.now() < tokenExpiry;
@@ -1323,13 +1439,22 @@ function setupTokenClient(clientId) {
   });
   driveReady = true;
   updateDriveBtn();
+  // Auto-reconectar Drive silenciosamente si la sesión ya está activa
+  if (isSessionValid()) {
+    silentRefreshMode = true;
+    tokenClient.requestAccessToken({ prompt: 'none' });
+  }
 }
 
 async function onTokenResponse(resp) {
+  const wasSilent = silentRefreshMode;
+  silentRefreshMode = false;
   const btn = document.getElementById('auth-btn');
   if (resp.error) {
-    if (btn) { btn.disabled = false; btn.textContent = 'Acceder con Google'; }
-    toast('⚠️ Error Drive: ' + resp.error);
+    if (!wasSilent) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Acceder con Google'; }
+      toast('⚠️ Error al conectar: ' + resp.error);
+    }
     updateDriveBtn();
     return;
   }
@@ -1367,7 +1492,7 @@ function handleDriveBtn() {
   const cfg = getDriveCfg();
   if (!cfg.clientId) { showDriveSettings(); return; }
   if (isDriveConnected()) { showDriveSettings(); return; }
-  if (!driveReady) { initDrive(); setTimeout(() => tokenClient?.requestAccessToken({ prompt: 'none' }), 1500); return; }
+  if (!driveReady) { initDrive(); return; }
   tokenClient.requestAccessToken({ prompt: '' });
 }
 
@@ -1991,10 +2116,9 @@ render();
 initDrive();
 if (isSessionValid()) {
   hideGate();
-  // Silent token refresh — no prompt, no popup
-  setTimeout(() => { if (tokenClient) tokenClient.requestAccessToken({ prompt: 'none' }); }, 800);
+  // Drive se reconecta automáticamente en setupTokenClient cuando carga el script de Google
 }
-// If no session, gate stays visible — user must click "Acceder con Google"
+// Si no hay sesión, el gate queda visible — el usuario debe hacer clic en "Acceder con Google"
 </script>
 <script>
 if ('serviceWorker' in navigator) {
