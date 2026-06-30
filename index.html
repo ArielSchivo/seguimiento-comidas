@@ -840,7 +840,8 @@ function saveDB(data) {
 let currentKey = todayKey();
 
 function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
 function moveDay(delta) {
@@ -858,7 +859,7 @@ function goToday() {
 function formatDateLabel(key) {
   const d = new Date(key + 'T12:00:00');
   const today = todayKey();
-  const yest  = (() => { const t = new Date(); t.setDate(t.getDate()-1); return t.toISOString().slice(0,10); })();
+  const yest  = (() => { const t = new Date(); t.setDate(t.getDate()-1); return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; })();
   let prefix = '';
   if (key === today) prefix = 'Hoy — ';
   else if (key === yest) prefix = 'Ayer — ';
