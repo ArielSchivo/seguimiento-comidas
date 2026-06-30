@@ -952,9 +952,10 @@ function render() {
   bar.innerHTML = `
     <button class="btn btn-green" onclick="showRetroModal()">✏️ Atrasado</button>
     <button class="btn btn-green" onclick="showCopyHistoryModal()">📋 Del historial</button>
-    <button class="btn btn-gray" onclick="exportDay()">📅 Este día</button>
-    <button class="btn btn-gray" onclick="showDayPicker()">📆 Días</button>
-    <button class="btn btn-gray" onclick="exportAll()">📋 Todo</button>`;
+    <button class="btn btn-green" onclick="showDayPicker('report')">📄 Reporte</button>
+    <button class="btn btn-gray" onclick="exportDay()">CSV hoy</button>
+    <button class="btn btn-gray" onclick="showDayPicker('csv')">CSV días</button>
+    <button class="btn btn-gray" onclick="exportAll()">CSV todo</button>`;
   main.appendChild(bar);
 }
 
@@ -2013,11 +2014,12 @@ function formatDateFull(key) {
   return `${DAY_NAMES[d.getDay()]} ${d.getDate()} de ${MONTH_NAMES[d.getMonth()]} de ${d.getFullYear()}`;
 }
 
-function showDayPicker() {
+function showDayPicker(mode = 'csv') {
   const db   = loadDB();
   const keys = Object.keys(db).filter(k => (db[k] || []).length > 0).sort().reverse();
   if (!keys.length) { toast('⚠️ No hay registros todavía'); return; }
 
+  const isReport = mode === 'report';
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.id = 'day-picker';
@@ -2026,7 +2028,7 @@ function showDayPicker() {
   overlay.innerHTML = `
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <div class="modal-title">📆 Seleccionar días a exportar</div>
+        <div class="modal-title">${isReport ? '📄 Generar reporte' : '📆 Seleccionar días a exportar'}</div>
         <button class="btn-icon" onclick="closeDayPicker()" title="Cerrar">✕</button>
       </div>
       <div class="modal-body">
@@ -2045,7 +2047,9 @@ function showDayPicker() {
         <button class="btn-link" id="picker-toggle" onclick="pickerToggleAll()">Seleccionar todo</button>
         <span class="selected-count" id="picker-count">0 días seleccionados</span>
         <button class="btn btn-gray" onclick="closeDayPicker()">Cancelar</button>
-        <button class="btn btn-green" onclick="exportSelected()">✓ Exportar</button>
+        ${isReport
+          ? `<button class="btn btn-green" onclick="generateReport()">📄 Generar reporte</button>`
+          : `<button class="btn btn-green" onclick="exportSelected()">✓ Exportar CSV</button>`}
       </div>
     </div>`;
 
@@ -2100,6 +2104,165 @@ function exportSelected() {
   downloadCSV(csvHeader() + rows.join('\n'), filename);
   closeDayPicker();
   toast(`✓ Exportados ${total} registros (${selected.length} días)`);
+}
+
+// ── Reporte HTML imprimible ───────────────────────────────────────────────────
+function generateReport() {
+  const selected = Array.from(document.querySelectorAll('.day-cb:checked')).map(cb => cb.value).sort();
+  if (!selected.length) { toast('⚠️ Seleccioná al menos un día'); return; }
+  closeDayPicker();
+
+  const db    = loadDB();
+  const nDays = selected.length;
+
+  const days = selected.map(key => {
+    const entries = (db[key] || []).sort((a,b) => a.timestamp - b.timestamp);
+    const byMeal  = {};
+    MEALS.forEach(m => byMeal[m.name] = []);
+    entries.forEach(e => {
+      if (byMeal[e.meal]) byMeal[e.meal].push(e);
+      else byMeal['Colación nocturna'].push(e);
+    });
+    return { key, entries, byMeal };
+  });
+
+  const totalEntries = days.reduce((s,d) => s + d.entries.length, 0);
+
+  const mealStats = MEALS.map(m => ({
+    ...m,
+    total: days.reduce((s,d) => s + (d.byMeal[m.name]||[]).length, 0),
+    coveredDays: days.filter(d => (d.byMeal[m.name]||[]).length > 0).length,
+  }));
+
+  const freq = {};
+  days.forEach(d => d.entries.forEach(e => {
+    const k = e.text.trim();
+    freq[k] = (freq[k]||0) + 1;
+  }));
+  const topFoods = Object.entries(freq).filter(([,v]) => v > 1).sort((a,b) => b[1]-a[1]).slice(0, 10);
+
+  const html = buildReportHTML({ days, selected, nDays, totalEntries, mealStats, topFoods });
+  const w = window.open('', '_blank');
+  if (!w) { toast('⚠️ Permitir ventanas emergentes para generar el reporte'); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
+function buildReportHTML({ days, selected, nDays, totalEntries, mealStats, topFoods }) {
+  const dateFrom    = formatDateFull(selected[0]);
+  const dateTo      = formatDateFull(selected[selected.length - 1]);
+  const generatedAt = new Date().toLocaleDateString('es-AR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  const avgPerDay   = nDays > 0 ? (totalEntries / nDays).toFixed(1) : '—';
+
+  const daySections = days.map(day => {
+    const mealBlocks = MEALS.map(m => {
+      const list = day.byMeal[m.name] || [];
+      if (!list.length) return '';
+      return `<div class="meal-block">
+        <div class="meal-lbl">${m.emoji} ${m.name}</div>
+        ${list.map(e => `<div class="entry-line"><span class="etime">${e.time}</span><span>${esc(e.text)}</span></div>`).join('')}
+      </div>`;
+    }).join('');
+    return `<div class="day-block">
+      <div class="day-head">
+        <span>${formatDateFull(day.key)}</span>
+        <span class="day-cnt">${day.entries.length} registro${day.entries.length !== 1 ? 's' : ''}</span>
+      </div>
+      ${mealBlocks || '<div class="empty-note">Sin registros</div>'}
+    </div>`;
+  }).join('');
+
+  const mealRows = mealStats.map(m => {
+    const pct = nDays > 0 ? Math.round(m.coveredDays / nDays * 100) : 0;
+    return `<tr>
+      <td>${m.emoji} ${m.name}</td>
+      <td class="num">${m.coveredDays}/${nDays}</td>
+      <td class="num">${m.total}</td>
+      <td><div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div> ${pct}%</td>
+    </tr>`;
+  }).join('');
+
+  const foodHTML = topFoods.length
+    ? `<ol>${topFoods.map(([t,c]) => `<li>${esc(t)} <span class="freq">${c}×</span></li>`).join('')}</ol>`
+    : `<p class="empty-note">Sin repeticiones detectadas en el período.</p>`;
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reporte Nutricional</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a202c;background:#f0f4f8;font-size:10.5pt;line-height:1.55}
+.page{max-width:760px;margin:0 auto;padding:28px 20px 60px}
+.rpt-header{background:#276749;color:white;border-radius:12px;padding:22px 26px;margin-bottom:22px}
+.rpt-title{font-size:19pt;font-weight:700;margin-bottom:3px}
+.rpt-range{font-size:11pt;opacity:.88;margin-bottom:5px}
+.rpt-meta{font-size:8.5pt;opacity:.65}
+.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:22px}
+.stat-card{background:white;border-radius:10px;padding:14px;text-align:center;box-shadow:0 1px 5px rgba(0,0,0,.08)}
+.stat-val{font-size:24pt;font-weight:700;color:#276749;line-height:1}
+.stat-lbl{font-size:8pt;color:#718096;text-transform:uppercase;letter-spacing:.05em;margin-top:4px}
+.section-title{font-size:10pt;font-weight:700;color:#276749;text-transform:uppercase;letter-spacing:.07em;margin:26px 0 10px;border-bottom:2px solid #c6f6d5;padding-bottom:5px}
+.day-block{background:white;border-radius:10px;padding:14px 18px;margin-bottom:12px;box-shadow:0 1px 5px rgba(0,0,0,.08);page-break-inside:avoid}
+.day-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #e2e8f0;padding-bottom:7px;margin-bottom:10px}
+.day-head>span:first-child{font-weight:700;font-size:10.5pt;color:#276749;text-transform:capitalize}
+.day-cnt{font-size:8.5pt;color:#a0aec0}
+.meal-block{margin-bottom:9px}
+.meal-block:last-child{margin-bottom:0}
+.meal-lbl{font-size:8pt;font-weight:700;color:#718096;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.entry-line{display:flex;gap:10px;padding:1px 0;font-size:10pt}
+.etime{color:#a0aec0;font-size:8.5pt;white-space:nowrap;min-width:34px;margin-top:2px}
+.empty-note{color:#a0aec0;font-style:italic;font-size:9.5pt;padding:2px 0}
+table{width:100%;border-collapse:collapse;background:white;border-radius:10px;overflow:hidden;box-shadow:0 1px 5px rgba(0,0,0,.08)}
+th{text-align:left;padding:9px 13px;background:#f0f9f4;color:#276749;font-size:8.5pt;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #c6f6d5}
+td{padding:8px 13px;border-bottom:1px solid #f0f4f8;font-size:10pt}
+tr:last-child td{border-bottom:none}
+td.num{text-align:right;color:#718096;font-size:9.5pt;font-variant-numeric:tabular-nums}
+.bar-bg{display:inline-block;background:#e8f5ed;border-radius:4px;height:7px;width:72px;vertical-align:middle;margin-right:5px}
+.bar-fill{background:#38a169;border-radius:4px;height:7px}
+ol{background:white;border-radius:10px;padding:14px 18px 14px 38px;box-shadow:0 1px 5px rgba(0,0,0,.08)}
+ol li{padding:5px 0;font-size:10pt;border-bottom:1px solid #f0f4f8}
+ol li:last-child{border-bottom:none}
+.freq{color:#38a169;font-weight:700;margin-left:8px;font-size:9pt}
+.print-fab{position:fixed;bottom:22px;right:22px;background:#276749;color:white;border:none;padding:11px 20px;border-radius:50px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(39,103,73,.4);font-family:inherit}
+.print-fab:hover{background:#1e5034}
+@media print{
+  body{background:white;font-size:10pt}
+  .page{padding:0;max-width:100%}
+  .print-fab{display:none}
+  .rpt-header{background:#276749!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .stat-card,.day-block,table,ol{box-shadow:none;border:1px solid #e2e8f0}
+  .section-title{margin-top:18px}
+  .day-block{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<button class="print-fab" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+<div class="page">
+  <div class="rpt-header">
+    <div class="rpt-title">🥗 Reporte Nutricional</div>
+    <div class="rpt-range">${nDays === 1 ? dateFrom : `${dateFrom} → ${dateTo}`}</div>
+    <div class="rpt-meta">Generado el ${generatedAt}</div>
+  </div>
+  <div class="summary">
+    <div class="stat-card"><div class="stat-val">${nDays}</div><div class="stat-lbl">Días registrados</div></div>
+    <div class="stat-card"><div class="stat-val">${totalEntries}</div><div class="stat-lbl">Registros totales</div></div>
+    <div class="stat-card"><div class="stat-val">${avgPerDay}</div><div class="stat-lbl">Promedio / día</div></div>
+  </div>
+  <div class="section-title">Registros por día</div>
+  ${daySections}
+  <div class="section-title">Cobertura por momento del día</div>
+  <table>
+    <thead><tr><th>Momento</th><th style="text-align:right">Días</th><th style="text-align:right">Registros</th><th>Cobertura</th></tr></thead>
+    <tbody>${mealRows}</tbody>
+  </table>
+  ${topFoods.length ? `<div class="section-title">Alimentos más frecuentes</div>${foodHTML}` : ''}
+</div>
+</body>
+</html>`;
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
