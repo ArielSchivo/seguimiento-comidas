@@ -707,6 +707,27 @@ input[type="time"]:focus { border-color: var(--accent); }
   margin-bottom: 16px;
 }
 
+/* Activity */
+.activity-buttons { display: flex; gap: 8px; padding: 11px 16px; flex-wrap: wrap; }
+.activity-btn {
+  padding: 6px 15px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: none;
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-family: inherit;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+.activity-btn:hover { background: var(--surface2); }
+.activity-btn.active {
+  background: var(--accent-light);
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+
 /* Toast */
 #toast {
   position: fixed;
@@ -825,6 +846,12 @@ const MEALS = [
   { name: 'Colación nocturna', emoji: '🌃',  start: 23,   end: 30,    label: '23:00 – 6:00'  },
 ];
 
+const ACTIVITIES = [
+  { id: 'running', label: 'Running', emoji: '🏃' },
+  { id: 'gym',     label: 'Gym',     emoji: '💪' },
+  { id: 'otros',   label: 'Otros',   emoji: '⚡' },
+];
+
 const DAY_NAMES  = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
 const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
@@ -904,6 +931,23 @@ function patchEntry(dayKey, id, newText) {
   if (entry) { entry.text = newText.trim(); saveDB(db); }
 }
 
+function dayKeys(db) {
+  return Object.keys(db).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k));
+}
+
+function toggleActivity(type) {
+  const db  = loadDB();
+  if (!db._activities) db._activities = {};
+  const cur = Array.from(db._activities[currentKey] || []);
+  const idx = cur.indexOf(type);
+  if (idx >= 0) cur.splice(idx, 1); else cur.push(type);
+  db._activities[currentKey] = cur;
+  saveDB(db);
+  document.querySelectorAll('#activity-card .activity-btn').forEach(btn => {
+    btn.classList.toggle('active', cur.includes(btn.dataset.type));
+  });
+}
+
 // ── Render ────────────────────────────────────────────────────────────────────
 function render() {
   document.getElementById('date-label').textContent = formatDateLabel(currentKey);
@@ -921,6 +965,22 @@ function render() {
 
   const main = document.getElementById('main');
   main.innerHTML = '';
+
+  // Activity card
+  const curActs = ((loadDB()._activities || {})[currentKey] || []);
+  const actCard = document.createElement('div');
+  actCard.className = 'meal-card';
+  actCard.id = 'activity-card';
+  actCard.innerHTML = `
+    <div class="meal-header">
+      <span class="meal-emoji">🏃</span>
+      <div class="meal-info"><div class="meal-name">Actividad física</div></div>
+      ${curActs.length ? `<span class="meal-badge">${ACTIVITIES.filter(a => curActs.includes(a.id)).map(a => a.emoji).join(' ')}</span>` : ''}
+    </div>
+    <div class="activity-buttons">
+      ${ACTIVITIES.map(a => `<button class="activity-btn${curActs.includes(a.id) ? ' active' : ''}" data-type="${a.id}" onclick="toggleActivity('${a.id}')">${a.emoji} ${a.label}</button>`).join('')}
+    </div>`;
+  main.appendChild(actCard);
 
   // Meal cards
   MEALS.forEach(meal => {
@@ -1056,7 +1116,7 @@ function showCopyHistoryModal() {
 function renderCopyStep1(overlay) {
   const db = loadDB();
   const allEntries = [];
-  Object.keys(db).sort().reverse().forEach(key => {
+  dayKeys(db).sort().reverse().forEach(key => {
     (db[key] || []).forEach(e => allEntries.push({ text: e.text, date: key, meal: e.meal }));
   });
   if (!allEntries.length) {
@@ -1303,7 +1363,7 @@ function exportDay() {
 
 function exportAll() {
   const db   = loadDB();
-  const keys = Object.keys(db).sort();
+  const keys = dayKeys(db).sort();
   if (!keys.length) { toast('⚠️ No hay registros todavía'); return; }
 
   const rows = [];
@@ -2112,8 +2172,9 @@ function generateReport() {
   if (!selected.length) { toast('⚠️ Seleccioná al menos un día'); return; }
   closeDayPicker();
 
-  const db    = loadDB();
-  const nDays = selected.length;
+  const db         = loadDB();
+  const nDays      = selected.length;
+  const actData    = db._activities || {};
 
   const days = selected.map(key => {
     const entries = (db[key] || []).sort((a,b) => a.timestamp - b.timestamp);
@@ -2123,7 +2184,7 @@ function generateReport() {
       if (byMeal[e.meal]) byMeal[e.meal].push(e);
       else byMeal['Colación nocturna'].push(e);
     });
-    return { key, entries, byMeal };
+    return { key, entries, byMeal, activities: actData[key] || [] };
   });
 
   const totalEntries = days.reduce((s,d) => s + d.entries.length, 0);
@@ -2163,11 +2224,15 @@ function buildReportHTML({ days, selected, nDays, totalEntries, mealStats, topFo
         ${list.map(e => `<div class="entry-line"><span class="etime">${e.time}</span><span>${esc(e.text)}</span></div>`).join('')}
       </div>`;
     }).join('');
+    const actLine = (day.activities || []).length
+      ? ACTIVITIES.filter(a => day.activities.includes(a.id)).map(a => `${a.emoji} ${a.label}`).join(' · ')
+      : null;
     return `<div class="day-block">
       <div class="day-head">
         <span>${formatDateFull(day.key)}</span>
         <span class="day-cnt">${day.entries.length} registro${day.entries.length !== 1 ? 's' : ''}</span>
       </div>
+      ${actLine ? `<div class="act-line">${actLine}</div>` : ''}
       ${mealBlocks || '<div class="empty-note">Sin registros</div>'}
     </div>`;
   }).join('');
@@ -2185,6 +2250,17 @@ function buildReportHTML({ days, selected, nDays, totalEntries, mealStats, topFo
   const foodHTML = topFoods.length
     ? `<ol>${topFoods.map(([t,c]) => `<li>${esc(t)} <span class="freq">${c}×</span></li>`).join('')}</ol>`
     : `<p class="empty-note">Sin repeticiones detectadas en el período.</p>`;
+
+  const actSummaryRows = ACTIVITIES.map(a => {
+    const cnt = days.filter(d => (d.activities||[]).includes(a.id)).length;
+    const pct = nDays > 0 ? Math.round(cnt / nDays * 100) : 0;
+    return `<tr>
+      <td>${a.emoji} ${a.label}</td>
+      <td class="num">${cnt}/${nDays} días</td>
+      <td><div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div> ${pct}%</td>
+    </tr>`;
+  }).join('');
+  const noActDays = days.filter(d => !d.activities || d.activities.length === 0).length;
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -2209,6 +2285,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;c
 .day-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #e2e8f0;padding-bottom:7px;margin-bottom:10px}
 .day-head>span:first-child{font-weight:700;font-size:10.5pt;color:#276749;text-transform:capitalize}
 .day-cnt{font-size:8.5pt;color:#a0aec0}
+.act-line{font-size:8.5pt;color:#276749;font-weight:600;margin-bottom:7px}
 .meal-block{margin-bottom:9px}
 .meal-block:last-child{margin-bottom:0}
 .meal-lbl{font-size:8pt;font-weight:700;color:#718096;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
@@ -2259,6 +2336,12 @@ ol li:last-child{border-bottom:none}
     <thead><tr><th>Momento</th><th style="text-align:right">Días</th><th style="text-align:right">Registros</th><th>Cobertura</th></tr></thead>
     <tbody>${mealRows}</tbody>
   </table>
+  <div class="section-title">Actividad física</div>
+  <table>
+    <thead><tr><th>Actividad</th><th style="text-align:right">Frecuencia</th><th>Cobertura</th></tr></thead>
+    <tbody>${actSummaryRows}</tbody>
+  </table>
+  ${noActDays > 0 ? `<p style="font-size:9pt;color:#a0aec0;margin-top:7px">${noActDays} día${noActDays !== 1 ? 's' : ''} sin actividad registrada</p>` : ''}
   ${topFoods.length ? `<div class="section-title">Alimentos más frecuentes</div>${foodHTML}` : ''}
 </div>
 </body>
