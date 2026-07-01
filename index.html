@@ -847,9 +847,9 @@ const MEALS = [
 ];
 
 const ACTIVITIES = [
-  { id: 'running', label: 'Running', emoji: '🏃' },
-  { id: 'gym',     label: 'Gym',     emoji: '💪' },
-  { id: 'otros',   label: 'Otros',   emoji: '⚡' },
+  { id: 'running',  label: 'Running',  emoji: '🏃' },
+  { id: 'gym',      label: 'Gym',      emoji: '💪' },
+  { id: 'descanso', label: 'Descanso', emoji: '🛌' },
 ];
 
 const DAY_NAMES  = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
@@ -1015,7 +1015,8 @@ function render() {
     <button class="btn btn-green" onclick="showDayPicker('report')">📄 Reporte</button>
     <button class="btn btn-gray" onclick="exportDay()">CSV hoy</button>
     <button class="btn btn-gray" onclick="showDayPicker('csv')">CSV días</button>
-    <button class="btn btn-gray" onclick="exportAll()">CSV todo</button>`;
+    <button class="btn btn-gray" onclick="exportAll()">CSV todo</button>
+    <button class="btn btn-gray" onclick="showImportModal()">📥 Importar</button>`;
   main.appendChild(bar);
 }
 
@@ -2164,6 +2165,222 @@ function exportSelected() {
   downloadCSV(csvHeader() + rows.join('\n'), filename);
   closeDayPicker();
   toast(`✓ Exportados ${total} registros (${selected.length} días)`);
+}
+
+// ── Importar CSV ─────────────────────────────────────────────────────────────
+let _importParsed = null;
+let _importMapping = null;
+
+function showImportModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'import-modal';
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeImportModal(); });
+  overlay.innerHTML = `
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:520px">
+      <div class="modal-header">
+        <div class="modal-title">📥 Importar datos</div>
+        <button class="btn-icon" onclick="closeImportModal()">✕</button>
+      </div>
+      <div class="modal-body modal-body-pad">
+        <div class="warn-box" style="margin-bottom:14px">
+          📊 Si tenés un archivo <strong>.xls / .xlsx</strong>, primero exportalo como CSV:<br>
+          <span style="color:#92400e">Excel:</span> Archivo → Guardar como → CSV (delimitado por comas)<br>
+          <span style="color:#92400e">Google Sheets:</span> Archivo → Descargar → CSV
+        </div>
+        <p style="font-size:.87rem;color:var(--text-muted);margin-bottom:14px">
+          El archivo puede tener cualquier estructura — vas a poder indicar qué columna es cada dato.
+        </p>
+        <div class="form-group">
+          <label class="form-label">Seleccioná el archivo CSV</label>
+          <input type="file" id="import-file" accept=".csv,.txt,.tsv"
+            style="font-size:.88rem;font-family:inherit;color:var(--text)"
+            onchange="onImportFileSelected(this)">
+        </div>
+        <div id="import-preview"></div>
+      </div>
+      <div class="modal-footer" id="import-footer">
+        <button class="btn btn-gray" onclick="closeImportModal()">Cancelar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  document._importEsc = e => { if (e.key === 'Escape') closeImportModal(); };
+  document.addEventListener('keydown', document._importEsc);
+}
+
+function closeImportModal() {
+  _importParsed = null; _importMapping = null;
+  document.getElementById('import-modal')?.remove();
+  if (document._importEsc) { document.removeEventListener('keydown', document._importEsc); delete document._importEsc; }
+}
+
+function parseCSVFile(text) {
+  const clean = text.replace(/^﻿/, '');
+  const lines  = clean.split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return null;
+  const first = lines[0];
+  const commas = (first.match(/,/g)  || []).length;
+  const semis  = (first.match(/;/g)  || []).length;
+  const tabs   = (first.match(/\t/g) || []).length;
+  const sep = semis > commas && semis >= tabs ? ';' : tabs > commas ? '\t' : ',';
+
+  function parseLine(line) {
+    if (sep === '\t') return line.split('\t').map(c => c.trim().replace(/^"|"$/g, ''));
+    const res = []; let cur = ''; let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+      else if (c === sep && !inQ) { res.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    res.push(cur.trim());
+    return res;
+  }
+
+  const headers = parseLine(lines[0]);
+  const rows    = lines.slice(1).map(l => parseLine(l)).filter(r => r.some(c => c));
+  return { headers, rows };
+}
+
+function parseFlexDate(s) {
+  if (!s) return null;
+  s = s.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // DD/MM/YYYY or DD-MM-YYYY (Argentina)
+  let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  // DD/MM/YY
+  m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);
+  if (m) return `20${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  // Fallback to Date constructor
+  const d = new Date(s);
+  if (!isNaN(d)) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return null;
+}
+
+function onImportFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const parsed = parseCSVFile(e.target.result);
+    if (!parsed || !parsed.rows.length) {
+      document.getElementById('import-preview').innerHTML =
+        '<div class="auth-error" style="display:block;margin-top:10px">⚠️ No se pudieron leer datos. Verificá que sea un CSV válido.</div>';
+      return;
+    }
+    _importParsed = parsed;
+    renderImportUI(parsed);
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function renderImportUI({ headers, rows }) {
+  const norm = headers.map(h => h.toLowerCase().trim());
+  const isOwn = norm.some(h => h.includes('fecha')) && norm.some(h => h.includes('descri'));
+
+  const previewEl = document.getElementById('import-preview');
+  const footerEl  = document.getElementById('import-footer');
+
+  if (isOwn) {
+    const di = norm.findIndex(h => h.includes('fecha'));
+    const mi = norm.findIndex(h => h.includes('comida'));
+    const ti = norm.findIndex(h => h.includes('hora'));
+    const xi = norm.findIndex(h => h.includes('descri'));
+    _importMapping = { dateIdx: di, mealIdx: mi, timeIdx: ti, descIdx: xi };
+
+    previewEl.innerHTML = `
+      <div class="drive-connected-badge" style="margin-top:12px">✓ Formato reconocido — ${rows.length} registros</div>
+      <div style="font-size:.82rem;color:var(--text-muted);margin:8px 0 4px">Vista previa:</div>
+      <div style="background:var(--bg);border-radius:var(--radius-sm);font-size:.82rem;overflow:hidden">
+        ${rows.slice(0,5).map(r => `<div style="display:flex;gap:8px;padding:5px 10px;border-bottom:1px solid var(--border)">
+          <span style="color:var(--text-muted);white-space:nowrap;min-width:80px">${esc(r[di]||'')}</span>
+          <span style="color:var(--accent-dark);white-space:nowrap">${esc(r[mi]||'')}</span>
+          <span style="flex:1">${esc(r[xi]||'')}</span>
+        </div>`).join('')}
+      </div>`;
+
+    footerEl.innerHTML = `
+      <span style="font-size:.82rem;color:var(--text-muted)">${rows.length} registros</span>
+      <button class="btn btn-gray" onclick="closeImportModal()">Cancelar</button>
+      <button class="btn btn-green" onclick="confirmImport()">✓ Importar</button>`;
+  } else {
+    const opts = headers.map((h,i) => `<option value="${i}">${esc(h) || `Columna ${i+1}`}</option>`).join('');
+    const none = `<option value="-1">— no disponible —</option>`;
+    const sel  = (id, extra='') => `<select id="${id}" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 10px;font-family:inherit;background:var(--bg);color:var(--text);font-size:.88rem">${extra}${opts}</select>`;
+
+    previewEl.innerHTML = `
+      <div style="margin-top:12px">
+        <div style="font-size:.83rem;color:var(--text-muted);margin-bottom:10px">Indicá qué columna corresponde a cada dato:</div>
+        <div class="form-group"><label class="form-label">Fecha <span style="color:var(--danger)">*</span></label>${sel('map-date')}</div>
+        <div class="form-group"><label class="form-label">Descripción / Qué comiste <span style="color:var(--danger)">*</span></label>${sel('map-desc')}</div>
+        <div class="form-group"><label class="form-label">Hora</label>${sel('map-time', none)}</div>
+        <div class="form-group"><label class="form-label">Momento del día (Almuerzo, Cena…)</label>${sel('map-meal', none)}</div>
+        <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:5px">Vista previa del archivo:</div>
+        <div style="overflow-x:auto;background:var(--bg);border-radius:var(--radius-sm);font-size:.79rem">
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr>${headers.map(h => `<th style="padding:5px 8px;text-align:left;color:var(--text-muted);border-bottom:1px solid var(--border);white-space:nowrap">${esc(h)}</th>`).join('')}</tr></thead>
+            <tbody>${rows.slice(0,3).map(r => `<tr>${r.map(c => `<td style="padding:5px 8px;border-bottom:1px solid var(--border);white-space:nowrap">${esc(c||'')}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>`;
+
+    footerEl.innerHTML = `
+      <span style="font-size:.82rem;color:var(--text-muted)">${rows.length} filas</span>
+      <button class="btn btn-gray" onclick="closeImportModal()">Cancelar</button>
+      <button class="btn btn-green" onclick="confirmImportMapped()">✓ Importar</button>`;
+  }
+}
+
+function confirmImportMapped() {
+  _importMapping = {
+    dateIdx: parseInt(document.getElementById('map-date').value),
+    descIdx: parseInt(document.getElementById('map-desc').value),
+    timeIdx: parseInt(document.getElementById('map-time').value),
+    mealIdx: parseInt(document.getElementById('map-meal').value),
+  };
+  confirmImport();
+}
+
+function confirmImport() {
+  const { dateIdx, mealIdx, timeIdx, descIdx } = _importMapping;
+  const { rows } = _importParsed;
+  const db = loadDB();
+  let imported = 0, skipped = 0;
+
+  rows.forEach((r, ri) => {
+    const rawDate = (r[dateIdx] || '').trim();
+    const text    = (r[descIdx] || '').trim();
+    if (!rawDate || !text) { skipped++; return; }
+
+    const dateVal = parseFlexDate(rawDate);
+    if (!dateVal) { skipped++; return; }
+
+    const timeVal = timeIdx >= 0 ? ((r[timeIdx] || '').trim() || '12:00') : '12:00';
+    const cleanTime = timeVal.length === 5 && /^\d{2}:\d{2}$/.test(timeVal) ? timeVal : '12:00';
+
+    let meal = mealIdx >= 0 ? (r[mealIdx] || '').trim() : '';
+    if (!meal || !MEALS.find(m => m.name === meal)) {
+      const [hh, mm] = cleanTime.split(':').map(Number);
+      meal = mealByHour(hh + (mm || 0) / 60);
+    }
+
+    if (!db[dateVal]) db[dateVal] = [];
+    if (db[dateVal].some(e => e.text.toLowerCase() === text.toLowerCase() && e.time === cleanTime)) {
+      skipped++; return;
+    }
+
+    const [yr,mo,dy] = dateVal.split('-').map(Number);
+    const [hh,mm]    = cleanTime.split(':').map(Number);
+    const ts = new Date(yr, mo-1, dy, hh, mm, 0).getTime() + ri;
+    db[dateVal].push({ id: ts, text, time: cleanTime, meal, timestamp: ts });
+    imported++;
+  });
+
+  saveDB(db);
+  closeImportModal();
+  render();
+  toast(`✓ Importados ${imported} registros${skipped ? ` · ${skipped} ignorados` : ''}`);
 }
 
 // ── Reporte HTML imprimible ───────────────────────────────────────────────────
