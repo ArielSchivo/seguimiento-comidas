@@ -1463,10 +1463,24 @@ async function getTokenEmail(token) {
 }
 
 // ── Google Drive integration ──────────────────────────────────────────────────
-const DRIVE_CFG_KEY = 'nutricion_drive_cfg';
+const DRIVE_CFG_KEY   = 'nutricion_drive_cfg';
+const TOKEN_CACHE_KEY = 'nutricion_token_v1';
 
 function getDriveCfg()      { try { return JSON.parse(localStorage.getItem(DRIVE_CFG_KEY) || '{}'); } catch { return {}; } }
 function saveDriveCfg(cfg)  { localStorage.setItem(DRIVE_CFG_KEY, JSON.stringify(cfg)); }
+
+function saveTokenCache() {
+  if (!accessToken || !tokenExpiry) return;
+  localStorage.setItem(TOKEN_CACHE_KEY, JSON.stringify({ t: accessToken, e: tokenExpiry }));
+}
+function restoreCachedToken() {
+  try {
+    const d = JSON.parse(localStorage.getItem(TOKEN_CACHE_KEY) || 'null');
+    if (d && d.t && Date.now() < d.e) { accessToken = d.t; tokenExpiry = d.e; return true; }
+  } catch {}
+  return false;
+}
+function clearTokenCache() { localStorage.removeItem(TOKEN_CACHE_KEY); }
 
 let accessToken        = null;
 let tokenExpiry        = 0;
@@ -1479,7 +1493,7 @@ let lastSyncTime       = null;
 let silentRefreshMode  = false;
 
 function isDriveConnected() {
-  return driveReady && !!accessToken && Date.now() < tokenExpiry;
+  return !!accessToken && Date.now() < tokenExpiry;
 }
 
 function initDrive() {
@@ -1502,8 +1516,8 @@ function setupTokenClient(clientId) {
   });
   driveReady = true;
   updateDriveBtn();
-  // Auto-reconectar Drive silenciosamente si la sesión ya está activa
-  if (isSessionValid()) {
+  // Auto-reconectar Drive silenciosamente si la sesión está activa y no hay token en caché
+  if (isSessionValid() && !isDriveConnected()) {
     silentRefreshMode = true;
     tokenClient.requestAccessToken({ prompt: 'none' });
   }
@@ -1524,6 +1538,7 @@ async function onTokenResponse(resp) {
 
   accessToken = resp.access_token;
   tokenExpiry = Date.now() + (resp.expires_in - 60) * 1000;
+  saveTokenCache();
 
   // Verify email if session not yet established
   if (!isSessionValid()) {
@@ -1663,6 +1678,7 @@ function saveDriveSettings() {
 function disconnectDrive() {
   if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
   accessToken = null; tokenExpiry = 0; driveFolderId = null; dataFileId = null; lastSyncTime = null;
+  clearTokenCache();
   closeDriveSettings();
   updateDriveBtn();
   render();
@@ -2580,7 +2596,12 @@ render();
 initDrive();
 if (isSessionValid()) {
   hideGate();
-  // Drive se reconecta automáticamente en setupTokenClient cuando carga el script de Google
+  // Intentar restaurar token de Drive desde caché (evita OAuth en cada apertura)
+  if (restoreCachedToken()) {
+    updateDriveBtn();
+    syncFromDrive();
+  }
+  // Si no hay token válido en caché, setupTokenClient intentará reconectar silenciosamente
 }
 // Si no hay sesión, el gate queda visible — el usuario debe hacer clic en "Acceder con Google"
 </script>
