@@ -1219,14 +1219,12 @@ function saveCopiedEntry(mealIdx) {
   const h      = Math.floor(rawMid % 24);
   const m      = Math.round((rawMid % 1) * 60);
   const timeStr = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-  const today  = todayKey();
   const db     = loadDB();
-  if (!db[today]) db[today] = [];
+  if (!db[currentKey]) db[currentKey] = [];
   const ts = Date.now();
-  db[today].push({ id: ts, text: text.trim(), time: timeStr, meal: meal.name, timestamp: ts });
+  db[currentKey].push({ id: ts, text: text.trim(), time: timeStr, meal: meal.name, timestamp: ts });
   saveDB(db);
   closeCopyHistoryModal();
-  currentKey = today;
   render();
   toast(`✓ Guardado en ${meal.emoji} ${meal.name}`);
 }
